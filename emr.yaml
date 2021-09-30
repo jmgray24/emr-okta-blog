@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: >-
+  CloudFormation template to create Amazon EMR cluster with AWS Lake Formation
+  and SAML integration.
+
+Parameters:
+  EC2KeyPair:
+    Description: 'Amazon EC2 Key Pair (Optional, for debugging)'
+    Type: String
+    MinLength: '0'
+  SAMLProviderName:
+    Type: String
+    Default: oktaSAMLProvider
+    AllowedValues:
+      - oktaSAMLProvider
+    Description: SAML Provider Name Created in AWS
+  userBucketName:
+    Type: String
+    Description: >-
+      Name of an existing S3 bucket (e.g s3://lf-metadata-bucket-account-id)
+      with no trailing /
+    AllowedPattern: 's3://.*[^/]'
+  myIPCidr:
+    Type: String
+    Description: >-
+      Enter the IP Address from where you wish to launch the blogpost (e.g
+      10.12.13.14/32)
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+  KdcAdminPassword:
+    Type: String
+    NoEcho: 'true'
+    AllowedPattern: >-
+      (?=^.{6,255}$)((?=.*\d)(?=.*[A-Z])(?=.*[a-z])|(?=.*\d)(?=.*[^A-Za-z0-9])(?=.*[a-z])|(?=.*[^A-Za-z0-9])(?=.*[A-Z])(?=.*[a-z])|(?=.*\d)(?=.*[A-Z])(?=.*[^A-Za-z0-9]))^.*
+    Description: >-
+      Must be at least 8 characters containing letters, numbers and symbols -
+      Eg: Password@123
+    Default: Password@123
+  Realm:
+    Type: String
+    Default: EC2.INTERNAL
+    Description: Kerberos Realm for Internal KDC
+  ReleaseLabel:
+    Type: String
+    Default: emr-5.30.1
+    AllowedValues:
+      - emr-5.30.1
+    Description: EMR Version
+  VPCSubnet:
+    Type: 'AWS::EC2::Subnet::Id'
+    Description: Subnet to be used for Amazon EMR cluster.
+  OktaAppMetadataURL:
+    Type: String
+    Description: URL for Okta metadata XML file.
+  oktaUser1:
+    Type: String
+    Description: Username for user 1
+    Default: analyst1
+  oktaUser2:
+    Type: String
+    Description: Username for user 2
+    Default: analyst2
+  InstanceType:
+    Type: String
+    Default: m5.xlarge
+    Description: EMR Cluster Instance Types for both Master and Core
+    AllowedValues:
+      - m5.xlarge
+      - m4.xlarge
+      - i3.xlarge
+      - i3.2xlarge
+      - r4.xlarge
+
+Resources:
+  
+
+  LakeFormationEMRInstanceProfileRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: 'sts:AssumeRole'
+      RoleName: !Sub 'LF-EMR-InstanceProfile-Role-${AWS::StackName}'
+  LFEMRInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: !Sub 'LakeFormationEMRInstanceProfileRole-${AWS::StackName}'
+      Path: /
+      Roles:
+        - !Ref LakeFormationEMRInstanceProfileRole
+  LFEMRSecurityConfiguration:
+    Type: 'AWS::EMR::SecurityConfiguration'
+    DependsOn:
+      - LakeFormationSAMLRole
+    Properties:
+      Name: !Sub 'LF-EMR-SecurityConfiguration-${AWS::StackName}'
+      SecurityConfiguration:
+        LakeFormationConfiguration:
+          IdpMetadataS3Path: !Sub '${userBucketName}/IdP-metadata/okta-metadata.xml'
+          EmrRoleForUsersARN: !GetAtt 
+            - LakeFormationEMRRole
+            - Arn
+          LakeFormationRoleForSAMLPrincipalARN: !GetAtt 
+            - LakeFormationSAMLRole
+            - Arn
+        AuthenticationConfiguration:
+          KerberosConfiguration:
+            Provider: ClusterDedicatedKdc
+            ClusterDedicatedKdcConfiguration:
+              TicketLifetimeInHours: 24
+
+  S3EMRLogsBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join 
+        - '-'
+        - - lf-emr-logs-bucket
+          - !Sub '${AWS::AccountId}-${AWS::StackName}'
+  EMRCluster:
+    Type: 'AWS::EMR::Cluster'
+    DependsOn:
+      - LFEMRSecurityConfiguration
+      - LakeFormationEMRInstanceProfileRole
+      - LFEMRInstanceProfile
+      - customResourceForOktaLambda
+    Properties:
+      Instances:
+        MasterInstanceGroup:
+          InstanceCount: 1
+          InstanceType: !Ref InstanceType
+          Market: ON_DEMAND
+          Name: cfnMaster
+        CoreInstanceGroup:
+          InstanceCount: 1
+          InstanceType: !Ref InstanceType
+          Market: ON_DEMAND
+          Name: cfnCore
+        Ec2SubnetId: !Ref VPCSubnet
+        Ec2KeyName: !If 
+          - HasKeyName
+          - !Ref EC2KeyPair
+          - !Ref 'AWS::NoValue'
+      Name: !Sub 'LF-EMRCluster-${AWS::StackName}'
+      Applications:
+        - Name: Hadoop
+        - Name: Spark
+        - Name: Livy
+        - Name: Zeppelin
+      Configurations:
+        - Classification: spark-hive-site
+          ConfigurationProperties:
+            hive.metastore.glue.catalogid: !Ref 'AWS::AccountId'
+      JobFlowRole: !Ref LFEMRInstanceProfile
+      KerberosAttributes:
+        KdcAdminPassword: !Ref KdcAdminPassword
+        Realm: !Ref Realm
+      ServiceRole: !Ref LakeFormationEMRRole
+      ReleaseLabel: !Ref ReleaseLabel
+      SecurityConfiguration: !Ref LFEMRSecurityConfiguration
+      VisibleToAllUsers: true
+      LogUri: !Sub 's3://${S3EMRLogsBucket}/'
+      BootstrapActions:
+        - Name: update-java-version
+          ScriptBootstrapAction:
+            Path: >-
+              s3://aws-bigdata-blog/artifacts/aws-blog-authn-emr-okta-authz-lake-formation/Artifacts/update-java-version.sh
+        #add shells script modify here

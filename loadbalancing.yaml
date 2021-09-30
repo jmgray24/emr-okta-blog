@@ -1,0 +1,140 @@
+Description:  This template deploys a VPC, with a pair of public and private subnets spread
+  across two Availability Zones. It deploys an internet gateway, with a default
+  route on the public subnets. It deploys a pair of NAT gateways (one in each AZ),
+  and default routes for them in the private subnets.
+
+Parameters:
+  EnvironmentName:
+    Description: An environment name that is prefixed to resource names
+    Type: String
+
+  VpcCIDR:
+    Description: Please enter the IP range (CIDR notation) for this VPC
+    Type: String
+    Default: 10.192.0.0/16
+
+  PublicSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.10.0/24
+
+  PublicSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.11.0/24
+
+  PrivateSubnet1CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    Type: String
+    Default: 10.192.20.0/24
+
+  PrivateSubnet2CIDR:
+    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    Type: String
+    Default: 10.192.21.0/24
+
+Resources:
+  #acm/r53/elb
+  ACMCertificate: 
+    Type: "AWS::CertificateManager::Certificate"
+    Properties: 
+      DomainName: example.com #GET FROM PARAM
+      DomainValidationOptions:
+            - DomainName: www.example.com
+              HostedZoneId: ZZZHHHHWWWWAAA
+      ValidationMethod: DNS
+      Tags: 
+        - 
+          Key: project
+          Value: emr-blog
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: ipv4
+      LoadBalancerAttributes: 
+        - LoadBalancerAttribute
+      Name: emr-blog-alb
+      Scheme: internet-facing
+      SecurityGroups: 
+        - String #edit
+      Subnets: 
+        - !Ref PublicSubnet1 #GET FROM PARAM
+        - !Ref PublicSubnet2 #GET FROM PARAM
+      Tags: 
+        - 
+          Key: project
+          Value: emr-blog
+      Type: application
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      DefaultActions: 
+        -
+          Type: redirect
+          RedirectConfig:
+            Host: "#{host}"
+            Path: "/#{path}"
+            Port: 443
+            Protocol: HTTPS
+            Query: "{query}"
+            StatusCode: "HTTP_301"
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  ALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: 
+      Certificates: 
+        - 
+          CertificateArn: !Ref ACMCertificate
+      DefaultActions: 
+        -
+          Type: forward
+          TargetGroupArn: !Ref ZeppelinTG
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
+
+  ZeppelinTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      HealthCheckPath: "/gateway/default/zeppelin/"
+      HealthCheckProtocol: "HTTPS"
+      Name: "emr-blog-tg"
+      Port: 8442
+      Protocol: HTTPS
+      ProtocolVersion: HTTP1
+      Tags: 
+        - 
+          Key: project
+          Value: emr-blog
+      Targets: 
+        - 
+          Id: !Ref MasterNodeIp #GET FROM PARAM MASTERNODE PRIVATE IP
+      TargetType: ip
+      VpcId: !Ref VPC #GET FROM PARAM
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: "Security group for ALB"
+      GroupName: "emr-blog-alb-sg"
+      SecurityGroupIngress: 
+        - CidrIp: 0.0.0.0/0 #GET FROM PARAM
+          FromPort: 443
+          IpProtocol: tcp
+          ToPort: 443
+        - CidrIp: 0.0.0.0/0 #GET FROM PARAM
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+      Tags: 
+        - 
+          Key: project
+          Value: emr-blog
+      VpcId: !Ref VPC #GET FROM PARAM
+
