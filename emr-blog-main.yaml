@@ -172,7 +172,6 @@ Resources:
 
   EMRStack:
     Type: 'AWS::CloudFormation::Stack'
-    DependsOn: NetworkingStack
     Properties:
       TemplateURL: 'https://lfdbtest-blog.s3.amazonaws.com/templates/emr.yaml'
       Parameters:
