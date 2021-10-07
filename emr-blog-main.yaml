@@ -188,16 +188,16 @@ Resources:
         VPCId: !GetAtt 
           - NetworkingStack
           - Outputs.VPCId
-        VPCSubnet: GetAtt 
+        VPCSubnet: !GetAtt 
           - NetworkingStack
           - Outputs.PrivateSubnet1
         InstanceType: !Ref InstanceType
         HostedZoneId: !Ref HostedZoneId
         DomainName: !Ref DomainName
-        PublicSubnet1Id: GetAtt 
+        PublicSubnet1Id: !GetAtt 
           - NetworkingStack
           - Outputs.PublicSubnet1
-        PublicSubnet2Id: GetAtt 
+        PublicSubnet2Id: !GetAtt 
           - NetworkingStack
           - Outputs.PublicSubnet2
         SAMLProviderName: !Ref SAMLProviderName

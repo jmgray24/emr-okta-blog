@@ -6,7 +6,6 @@ Parameters:
   EC2KeyPair:
     Description: 'Amazon EC2 Key Pair (Optional, for debugging)'
     Type: 'AWS::EC2::KeyPair::KeyName'
-    MinLength: '0'
   DataBucketName:
     Type: String
     Description: 'S3 Data bucket name'
@@ -310,8 +309,6 @@ Resources:
 
   LFEMRSecurityConfiguration:
     Type: 'AWS::EMR::SecurityConfiguration'
-    DependsOn:
-      - LakeFormationSAMLRole
     Properties:
       Name: !Sub 'LF-EMR-SecurityConfiguration-${AWS::StackName}'
       SecurityConfiguration:
@@ -330,16 +327,13 @@ Resources:
     Properties:
       BucketName: !Join 
         - '-'
-        - - lf-emr-logs-bucket
-          - !Sub '${AWS::AccountId}-${AWS::StackName}'
+        - - emrblog-logs
+          - !Sub '${AWS::AccountId}'
 
   EMRCluster:
     Type: 'AWS::EMR::Cluster'
     DependsOn:
-      - LFEMRSecurityConfiguration
       - LakeFormationEMRInstanceProfileRole
-      - LFEMRInstanceProfile
-      - MasterNodeAdditionalSG
     Properties:
       Instances:
         AdditionalMasterSecurityGroups:
@@ -394,7 +388,6 @@ Resources:
 
   ZeppelinTG:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    DependsOn: EMRCluster
     Properties: 
       HealthCheckPath: "/gateway/default/zeppelin/"
       HealthCheckProtocol: "HTTPS"
@@ -449,7 +442,6 @@ Resources:
 
   MasterNodeAdditionalSG:
     Type: AWS::EC2::SecurityGroup
-    DependsOn: ALBSecurityGroup
     Properties: 
       GroupDescription: "Security group for Master node to allow access to Zeppelin"
       GroupName: !Sub 'emr-blog-mn-sg-${AWS::StackName}'
@@ -462,7 +454,6 @@ Resources:
   
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    DependsOn: ALBSecurityGroup
     Properties: 
       IpAddressType: ipv4
       Name: !Sub 'emr-blog-alb-${AWS::StackName}' #max 32 chars
@@ -476,7 +467,6 @@ Resources:
 
   ALBListenerHTTP:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    DependsOn: ALB
     Properties: 
       DefaultActions: 
         -
@@ -494,9 +484,6 @@ Resources:
 
   ALBListenerHTTPS:
     Type: AWS::ElasticLoadBalancingV2::Listener
-    DependsOn: 
-      - ALB
-      - ACMCertificate
     Properties: 
       Certificates: 
         - 
@@ -512,7 +499,6 @@ Resources:
 
   R53RecordSet:
     Type: AWS::Route53::RecordSetGroup
-    DependsOn: ALB
     Properties:
       HostedZoneId: !Ref HostedZoneId
       Comment: ALB RecordSet.

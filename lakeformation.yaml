@@ -28,13 +28,12 @@ Resources:
     Properties:
       BucketName: !Join 
         - '-'
-        - - lfdata
-          - !Sub '${AWS::AccountId}-${AWS::StackName}'
+        - - emrblog-data
+          - !Sub '${AWS::AccountId}'
           
   RegisterLFDataLocation:
     Type: 'AWS::LakeFormation::Resource'
     DependsOn:
-      - S3DataBucket
       - customResourceForIdPLambda
     Properties:
       ResourceArn: !Join
@@ -114,7 +113,6 @@ Resources:
 
   IdPLambdaPolicy:
     Type: 'AWS::IAM::ManagedPolicy'
-    DependsOn: S3DataBucket
     Properties:
       ManagedPolicyName: idp-Lambda-Policy
       PolicyDocument:
@@ -172,9 +170,6 @@ Resources:
   
   exportIdPMetadataLambda:
     Type: 'AWS::Lambda::Function'
-    DependsOn: 
-      - S3DataBucket
-      - IdPLambdaExecutionRole
     Properties:
       Handler: index.lambda_handler
       FunctionName: !Sub 'exportIdPMetadata-${AWS::StackName}'
@@ -240,8 +235,6 @@ Resources:
                   for content in queryResponse['Contents']:
                       myKey = content['Key']
                       myFile = myKey[myKey.rfind('/') + 1:]
-                      print(myKey)
-                      print(myFile)
                       if not myFile == '' and 'data/' in myKey:
                           copy_source = {'Bucket': sourceBucketName, 'Key': myKey}
                           queryResponse = destBucket.copy(copy_source, 'Data/' + myFile)
@@ -284,7 +277,6 @@ Resources:
 
   customResourceForIdPLambda:
     Type: 'AWS::CloudFormation::CustomResource'
-    DependsOn: exportIdPMetadataLambda
     Version: '1.0'
     Properties:
       ServiceToken: !GetAtt exportIdPMetadataLambda.Arn
