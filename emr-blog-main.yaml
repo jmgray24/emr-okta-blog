@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: "blah blah"
+Description: "Creates resources for blog post - EMR, VPC, LF Databases Etc"
 
 Metadata:
   'AWS::CloudFormation::Interface':
@@ -28,7 +28,6 @@ Metadata:
           - KdcAdminPassword
           - ReleaseLabel
           - InstanceType
-          - VPCSubnet
           - EC2KeyPair
     ParameterLabels:
       VpcCIDR:
@@ -48,7 +47,7 @@ Metadata:
 
       LFDatabaseName:
         default: DB name
-      LFDatabaseTableName: 
+      LFTableName: 
         default: DBTableName
       LFSAMLUserName:
         default: LFSAMLUserName
@@ -56,7 +55,6 @@ Metadata:
         default: OktaAppMetadataURL
       SAMLProviderName:
         default: SAMLProviderName
-
       EC2KeyPair:
         default: EC2 Key Pair
 
@@ -130,11 +128,13 @@ Parameters:
       Must be at least 8 characters containing letters, numbers and symbols -
       Eg: Password@123
     Default: Password@123
-  ReleaseLabel: #**** SHOW BUT CHANGE DEFAULT
+  ReleaseLabel:
     Type: String
-    Default: emr-5.30.1
+    Default: emr-5.33.0
     AllowedValues:
-      - emr-5.30.1
+      - emr-5.33.0
+      - emr-5.32.0
+      - emr-5.31.0
     Description: EMR Version
   InstanceType:
     Type: String
