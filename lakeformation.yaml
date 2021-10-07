@@ -1,0 +1,302 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  LFDatabaseName:
+    Type: String
+    Default: lfdb
+
+  LFTableName:
+    Type: String
+    Default: cardata
+
+  LFSAMLUserName:
+    Type: String
+    Default: analyst
+
+  SAMLProviderName:
+    Type: String
+    Default: OktaSAMLProvider
+
+  OktaAppMetadataURL:
+    Type: String
+
+# Resources section defines metadata for the Data Catalog
+Resources:
+
+  S3DataBucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName: !Join 
+        - '-'
+        - - lfdata
+          - !Sub '${AWS::AccountId}-${AWS::StackName}'
+          
+  RegisterLFDataLocation:
+    Type: 'AWS::LakeFormation::Resource'
+    DependsOn:
+      - S3DataBucket
+      - customResourceForIdPLambda
+    Properties:
+      ResourceArn: !Join
+        - ''
+        - - !GetAtt S3DataBucket.Arn
+          - /Data/
+      RoleArn: !Sub >-
+        arn:aws:iam::${AWS::AccountId}:role/aws-service-role/lakeformation.amazonaws.com/AWSServiceRoleForLakeFormationDataAccess
+      UseServiceLinkedRole: true
+
+  LFDatabase:
+    Type: AWS::Glue::Database
+    DependsOn: customResourceForIdPLambda
+    Properties:
+      CatalogId: !Ref AWS::AccountId   
+      DatabaseInput:
+        Name: !Ref LFDatabaseName
+        Description: Database to hold tables for vehicle data
+        LocationUri: !Sub
+          - 's3://${S3DataBucketName}/Data/'
+          - S3DataBucketName: !Ref S3DataBucket
+
+  LFDatabaseTable:
+    DependsOn: 
+      - LFDatabase
+      - customResourceForIdPLambda
+    Type: AWS::Glue::Table
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseName: !Ref LFDatabaseName
+      TableInput:
+        Name: !Ref LFTableName
+        Description: Columns for car/toll data
+        TableType: EXTERNAL_TABLE
+        Parameters: {
+          "classification": "csv"
+        }     
+        StorageDescriptor:
+          OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+          Columns:
+          - Name: tollid
+            Type: bigint
+          - Name: col_dateyear
+            Type: bigint
+          - Name: rfid
+            Type: bigint
+          - Name: col_dateday
+            Type: bigint
+          - Name: vehicle_type
+            Type: string
+          - Name: col_datemonth
+            Type: string
+          InputFormat: org.apache.hadoop.mapred.TextInputFormat
+          Location: !Sub
+            - 's3://${S3DataBucketName}/Data/'
+            - S3DataBucketName: !Ref S3DataBucket
+          SerdeInfo:
+            Parameters:
+              field.delim: ","
+            SerializationLibrary: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+
+  LFTablePerms:
+    Type: AWS::LakeFormation::Permissions
+    DependsOn: 
+      - customResourceForIdPLambda
+      - LFDatabaseTable
+    Properties: 
+      DataLakePrincipal: 
+        DataLakePrincipalIdentifier: !Sub arn:aws:iam::${AWS::AccountId}:saml-provider/${SAMLProviderName}:user/${LFSAMLUserName}
+      Permissions: 
+        - SELECT
+      Resource: 
+        TableResource:
+          CatalogId: !Ref AWS::AccountId
+          DatabaseName: !Ref LFDatabaseName
+          Name: !Ref LFTableName
+
+  IdPLambdaPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    DependsOn: S3DataBucket
+    Properties:
+      ManagedPolicyName: idp-Lambda-Policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 'iam:CreateSAMLProvider'
+              - 'iam:DeleteSAMLProvider'
+            Resource: '*'
+            Effect: Allow
+          - Action:
+              - 's3:PutObject'
+              - 's3:GetObject'
+              - 's3:GetBucketLocation'
+              - 's3:AbortMultipartUpload'
+              - 's3:DeleteObject'
+              - 's3:List*'
+            Resource:
+              - !GetAtt S3DataBucket.Arn
+              - !Sub 
+                - '${S3DataBucketArn}/*'
+                - S3DataBucketArn: !GetAtt S3DataBucket.Arn
+            Effect: Allow
+          - Action:
+              - 's3:GetObject'
+              - 's3:List*'
+            Resource:
+              - 'arn:aws:s3:::lfdbtest-blog'
+              - 'arn:aws:s3:::lfdbtest-blog/data/*'
+            Effect: Allow
+          - Action: 'logs:CreateLogGroup'
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+            Effect: Allow
+          - Action:
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource:
+              - !Sub >-
+                arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/exportIdPMetadata-${AWS::StackName}:*
+            Effect: Allow
+      Roles:
+        - !Ref IdPLambdaExecutionRole
+  IdPLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      RoleName: !Sub 'IdP-Lambda-Role-${AWS::StackName}'
+  
+  exportIdPMetadataLambda:
+    Type: 'AWS::Lambda::Function'
+    DependsOn: 
+      - S3DataBucket
+      - IdPLambdaExecutionRole
+    Properties:
+      Handler: index.lambda_handler
+      FunctionName: !Sub 'exportIdPMetadata-${AWS::StackName}'
+      Runtime: python3.7
+      Code:
+        ZipFile: |
+          import json
+          import urllib
+          import urllib.request
+          import boto3
+          import os
+          import time
+          import http.client
+          import urllib.parse
+          import sys
+          import uuid
+
+          def lambda_handler(event, context):
+              response = {
+                  'StackId': event['StackId'],
+                  'RequestId': event['RequestId'],
+                  'LogicalResourceId': event['LogicalResourceId'],
+                  'Status': 'SUCCESS'
+              }
+
+              if 'PhysicalResourceId' in event:
+                  response['PhysicalResourceId'] = event['PhysicalResourceId']
+              else:
+                  response['PhysicalResourceId'] = str(uuid.uuid4())
+
+              s3 = boto3.resource('s3')
+              s3Client = boto3.client('s3')
+              iam = boto3.client('iam')
+              dataBucketName = os.environ['DataBucketName']
+              sourceBucketName = os.environ['BlogBucketName']
+              samlProviderName = os.environ['SAMLProviderName']
+
+              try:
+                  if event['RequestType'] == 'Update':
+                      return send_response(event, response)
+                  elif event['RequestType'] == 'Delete':
+                      queryResponse = s3Client.delete_object(
+                          Bucket=dataBucketName,
+                          Key='IdP-metadata/okta-metadata.xml')
+
+                      queryResponse = s3Client.list_objects_v2(Bucket=dataBucketName, StartAfter='Data/')
+                      for content in queryResponse['Contents']:
+                          s3Client.delete_object(
+                          Bucket=dataBucketName,
+                          Key=content['Key'])
+
+                      queryResponse = iam.delete_saml_provider(SAMLProviderArn='arn:aws:iam::' + os.environ['AWSAccountId'] + ':saml-provider/' + samlProviderName)
+                      return send_response(event, response)
+
+                  with urllib.request.urlopen(os.environ['OktaAppMetadataURL']) as f:
+                      file_content = f.read()
+                  s3.Bucket(dataBucketName).put_object(Key='IdP-metadata/okta-metadata.xml', Body=file_content)
+
+                  queryResponse = iam.create_saml_provider(SAMLMetadataDocument=file_content.decode('utf-8'), Name=samlProviderName)
+
+                  queryResponse = s3Client.list_objects_v2(Bucket=sourceBucketName, Prefix='')
+                  destBucket = s3.Bucket(dataBucketName)
+                  for content in queryResponse['Contents']:
+                      myKey = content['Key']
+                      myFile = myKey[myKey.rfind('/') + 1:]
+                      print(myKey)
+                      print(myFile)
+                      if not myFile == '' and 'data/' in myKey:
+                          copy_source = {'Bucket': sourceBucketName, 'Key': myKey}
+                          queryResponse = destBucket.copy(copy_source, 'Data/' + myFile)
+              except Exception as e:
+                  print("Encountered exception: {}".format(e))
+                  return send_response(event, response, reason=str(e))
+
+              return send_response(event, response, reason='SUCCESS')
+
+          def send_response(request, response, status=None, reason=None):
+              if status is not None:
+                  response['Status'] = status
+              if reason is not None:
+                  response['Reason'] = reason
+              if 'ResponseURL' in request and request['ResponseURL']:
+                  if not reason == None:
+                      print("Reason: {}".format(reason))
+                  if 'RequestType' in request and request['RequestType']:
+                      print("RequestType: {}".format(request['RequestType']))
+                  print("Response: {}".format(response))
+                  try:
+                      url = urllib.parse.urlparse(request['ResponseURL'])
+                      body = json.dumps(response)
+                      https = http.client.HTTPSConnection(url.hostname)
+                      https.request('PUT', url.path + '?' + url.query, body)
+                  except:
+                      print('Failed to send the response to the provided URL')
+              return response
+      Environment:
+        Variables:
+          DataBucketName: !Ref S3DataBucket
+          SAMLProviderName: !Ref SAMLProviderName
+          AWSAccountId: !Sub '${AWS::AccountId}'
+          OktaAppMetadataURL: !Ref OktaAppMetadataURL
+          BlogBucketName: 'lfdbtest-blog'
+      Description: ''
+      MemorySize: 128
+      Timeout: 900
+      Role: !GetAtt IdPLambdaExecutionRole.Arn
+
+  customResourceForIdPLambda:
+    Type: 'AWS::CloudFormation::CustomResource'
+    DependsOn: exportIdPMetadataLambda
+    Version: '1.0'
+    Properties:
+      ServiceToken: !GetAtt exportIdPMetadataLambda.Arn
+      StackName: !Ref 'AWS::StackName'
+
+Outputs:
+  DataBucketName:
+    Description: S3DataBucket
+    Value: !Ref S3DataBucket
+  DataBucketArn:
+    Description: S3DataBucket ARN
+    Value: !GetAtt S3DataBucket.Arn
+  
+  
+

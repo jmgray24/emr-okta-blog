@@ -1,35 +1,39 @@
-Description:  This template deploys a VPC, with a pair of public and private subnets spread
-  across two Availability Zones. It deploys an internet gateway, with a default
-  route on the public subnets. It deploys a pair of NAT gateways (one in each AZ),
-  and default routes for them in the private subnets.
+AWSTemplateFormatVersion: 2010-09-09
+Description:  Deploys VPC and associated subnets
 
 Parameters:
-  EnvironmentName:
-    Description: An environment name that is prefixed to resource names
-    Type: String
-
   VpcCIDR:
     Description: Please enter the IP range (CIDR notation) for this VPC
+    ConstraintDescription: "Must be a valid IP range in x.x.x.x/x notation"
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
     Type: String
     Default: 10.192.0.0/16
 
   PublicSubnet1CIDR:
     Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+    ConstraintDescription: "Must be a valid IP range in x.x.x.x/x notation"
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
     Type: String
     Default: 10.192.10.0/24
 
   PublicSubnet2CIDR:
     Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
+    ConstraintDescription: "Must be a valid IP range in x.x.x.x/x notation"
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
     Type: String
     Default: 10.192.11.0/24
 
   PrivateSubnet1CIDR:
     Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+    ConstraintDescription: "Must be a valid IP range in x.x.x.x/x notation"
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
     Type: String
     Default: 10.192.20.0/24
 
   PrivateSubnet2CIDR:
     Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+    ConstraintDescription: "Must be a valid IP range in x.x.x.x/x notation"
+    AllowedPattern: "^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\\/([0-9]|[1-2][0-9]|3[0-2]))$"
     Type: String
     Default: 10.192.21.0/24
 
@@ -42,14 +46,14 @@ Resources:
       EnableDnsHostnames: true
       Tags:
         - Key: Name
-          Value: !Ref EnvironmentName
+          Value: !Ref AWS::StackName
 
   InternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
       Tags:
         - Key: Name
-          Value: !Ref EnvironmentName
+          Value: !Ref AWS::StackName
 
   InternetGatewayAttachment:
     Type: AWS::EC2::VPCGatewayAttachment
@@ -66,7 +70,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+          Value: !Sub ${AWS::StackName} Public Subnet (AZ1)
 
   PublicSubnet2:
     Type: AWS::EC2::Subnet
@@ -77,7 +81,7 @@ Resources:
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Public Subnet (AZ2)
+          Value: !Sub ${AWS::StackName} Public Subnet (AZ2)
 
   PrivateSubnet1:
     Type: AWS::EC2::Subnet
@@ -88,7 +92,7 @@ Resources:
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+          Value: !Sub ${AWS::StackName} Private Subnet (AZ1)
 
   PrivateSubnet2:
     Type: AWS::EC2::Subnet
@@ -99,7 +103,7 @@ Resources:
       MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+          Value: !Sub ${AWS::StackName} Private Subnet (AZ2)
 
   NatGateway1EIP:
     Type: AWS::EC2::EIP
@@ -131,7 +135,7 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Public Routes
+          Value: !Sub ${AWS::StackName} Public Routes
 
   DefaultPublicRoute:
     Type: AWS::EC2::Route
@@ -160,7 +164,7 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Private Routes (AZ1)
+          Value: !Sub ${AWS::StackName} Private Routes (AZ1)
 
   DefaultPrivateRoute1:
     Type: AWS::EC2::Route
@@ -181,7 +185,7 @@ Resources:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub ${EnvironmentName} Private Routes (AZ2)
+          Value: !Sub ${AWS::StackName} Private Routes (AZ2)
 
   DefaultPrivateRoute2:
     Type: AWS::EC2::Route
@@ -203,113 +207,8 @@ Resources:
       GroupDescription: "Security group with no ingress rule"
       VpcId: !Ref VPC
 
-  #acm/r53/elb
-  ACMCertificate: 
-    Type: "AWS::CertificateManager::Certificate"
-    Properties: 
-      DomainName: example.com
-      DomainValidationOptions:
-            - DomainName: www.example.com
-              HostedZoneId: ZZZHHHHWWWWAAA
-      ValidationMethod: DNS
-      Tags: 
-        - 
-          Key: project
-          Value: emr-blog
-
-  ALB:
-    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-    Properties: 
-      IpAddressType: ipv4
-      LoadBalancerAttributes: 
-        - LoadBalancerAttribute
-      Name: emr-blog-alb
-      Scheme: internet-facing
-      SecurityGroups: 
-        - String #edit
-      Subnets: 
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
-      Tags: 
-        - 
-          Key: project
-          Value: emr-blog
-      Type: application
-
-  ALBListenerHTTP:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
-      DefaultActions: 
-        -
-          Type: redirect
-          RedirectConfig:
-            Host: "#{host}"
-            Path: "/#{path}"
-            Port: 443
-            Protocol: HTTPS
-            Query: "{query}"
-            StatusCode: "HTTP_301"
-      LoadBalancerArn: !Ref ALB
-      Port: 80
-      Protocol: HTTP
-
-  ALBListenerHTTPS:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties: 
-      Certificates: 
-        - 
-          CertificateArn: !Ref ACMCertificate
-      DefaultActions: 
-        -
-          Type: forward
-          TargetGroupArn: !Ref ZeppelinTG
-      LoadBalancerArn: !Ref ALB
-      Port: 443
-      Protocol: HTTPS
-      SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
-
-  ZeppelinTG:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties: 
-      HealthCheckPath: "/gateway/default/zeppelin/"
-      HealthCheckProtocol: "HTTPS"
-      Name: "emr-blog-tg"
-      Port: 8442
-      Protocol: HTTPS
-      ProtocolVersion: HTTP1
-      Tags: 
-        - 
-          Key: project
-          Value: emr-blog
-      Targets: 
-        - 
-          Id: //masternode ip address
-      TargetType: ip
-      VpcId: !Ref VPC
-
-
-  ALBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties: 
-      GroupDescription: "Security group for ALB"
-      GroupName: "emr-blog-alb-sg"
-      SecurityGroupIngress: 
-        - CidrIp: 0.0.0.0/0
-          FromPort: 443
-          IpProtocol: tcp
-          ToPort: 443
-        - CidrIp: 0.0.0.0/0
-          FromPort: 80
-          IpProtocol: tcp
-          ToPort: 80
-      Tags: 
-        - 
-          Key: project
-          Value: emr-blog
-      VpcId: !Ref VPC
-
 Outputs:
-  VPC:
+  VPCId:
     Description: A reference to the created VPC
     Value: !Ref VPC
 

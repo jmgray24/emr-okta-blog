@@ -1,32 +1,18 @@
 AWSTemplateFormatVersion: 2010-09-09
 
-Description: >-
-  CloudFormation template to create Amazon EMR cluster with AWS Lake Formation
-  and SAML integration.
+Description: CloudFormation template to create Amazon EMR cluster
 
 Parameters:
   EC2KeyPair:
     Description: 'Amazon EC2 Key Pair (Optional, for debugging)'
-    Type: String
+    Type: 'AWS::EC2::KeyPair::KeyName'
     MinLength: '0'
-  SAMLProviderName:
+  DataBucketName:
     Type: String
-    Default: oktaSAMLProvider
-    AllowedValues:
-      - oktaSAMLProvider
-    Description: SAML Provider Name Created in AWS
-  userBucketName:
+    Description: 'S3 Data bucket name'
+  DataBucketArn:
     Type: String
-    Description: >-
-      Name of an existing S3 bucket (e.g s3://lf-metadata-bucket-account-id)
-      with no trailing /
-    AllowedPattern: 's3://.*[^/]'
-  myIPCidr:
-    Type: String
-    Description: >-
-      Enter the IP Address from where you wish to launch the blogpost (e.g
-      10.12.13.14/32)
-    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    Description: 'S3 Data bucket ARN'
   KdcAdminPassword:
     Type: String
     NoEcho: 'true'
@@ -36,30 +22,18 @@ Parameters:
       Must be at least 8 characters containing letters, numbers and symbols -
       Eg: Password@123
     Default: Password@123
-  Realm:
-    Type: String
-    Default: EC2.INTERNAL
-    Description: Kerberos Realm for Internal KDC
   ReleaseLabel:
     Type: String
     Default: emr-5.30.1
     AllowedValues:
       - emr-5.30.1
     Description: EMR Version
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID
   VPCSubnet:
     Type: 'AWS::EC2::Subnet::Id'
     Description: Subnet to be used for Amazon EMR cluster.
-  OktaAppMetadataURL:
-    Type: String
-    Description: URL for Okta metadata XML file.
-  oktaUser1:
-    Type: String
-    Description: Username for user 1
-    Default: analyst1
-  oktaUser2:
-    Type: String
-    Description: Username for user 2
-    Default: analyst2
   InstanceType:
     Type: String
     Default: m5.xlarge
@@ -70,9 +44,249 @@ Parameters:
       - i3.xlarge
       - i3.2xlarge
       - r4.xlarge
+  HostedZoneId:
+    Description: TBD
+    Type: AWS::Route53::HostedZone::Id
+  DomainName:
+    Description: TBD
+    Type: String
+  PublicSubnet1Id:
+    Description: The ID of a Public Subnet in the VPC
+    ConstraintDescription: Must be the ID of an existing subnet within the selected VPC.
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnet2Id:
+    Description: The ID of a Public Subnet in the VPC
+    ConstraintDescription: Must be the ID of an existing subnet within the selected VPC.
+    Type: AWS::EC2::Subnet::Id
+  SAMLProviderName:
+    Type: String
+    Default: OktaSAMLProvider
 
 Resources:
-  
+
+  lfSamlPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: LF-SAML-Policy-v2
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          Effect: Allow
+          Action:
+            - 'lakeformation:GetDataAccess'
+            - 'lakeformation:GetMetadataAccess'
+            - 'glue:CreateDatabase'
+            - 'glue:GetUnfiltered*'
+            - 'glue:GetTable'
+            - 'glue:GetTables'
+            - 'glue:GetDatabase'
+            - 'glue:GetDatabases'
+            - 'glue:GetUserDefinedFunction'
+            - 'glue:GetUserDefinedFunctions'
+          Resource: '*'
+      Roles:
+        - !Ref LakeFormationSAMLRole
+
+  #Role that federates user gets
+  LakeFormationSAMLRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:aws:iam::${AWS::AccountId}:saml-provider/${SAMLProviderName}'
+            Action: 'sts:AssumeRoleWithSAML'
+          - Effect: Allow
+            Principal:
+              Service:
+                - glue.amazonaws.com
+                - lakeformation.amazonaws.com
+            Action: 'sts:AssumeRole'
+      RoleName: !Sub 'LF-SAML-Role-${AWS::StackName}'
+
+
+  lfEmrPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: LF-EMR-Policy-v2
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Resource: '*'
+            Action:
+              - 'ec2:AuthorizeSecurityGroupEgress'
+              - 'ec2:AuthorizeSecurityGroupIngress'
+              - 'ec2:CancelSpotInstanceRequests'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateSecurityGroup'
+              - 'ec2:CreateTags'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteSecurityGroup'
+              - 'ec2:DeleteTags'
+              - 'ec2:DescribeAvailabilityZones'
+              - 'ec2:DescribeAccountAttributes'
+              - 'ec2:DescribeDhcpOptions'
+              - 'ec2:DescribeImages'
+              - 'ec2:DescribeInstanceStatus'
+              - 'ec2:DescribeInstances'
+              - 'ec2:DescribeKeyPairs'
+              - 'ec2:DescribeNetworkAcls'
+              - 'ec2:DescribeNetworkInterfaces'
+              - 'ec2:DescribePrefixLists'
+              - 'ec2:DescribeRouteTables'
+              - 'ec2:DescribeSecurityGroups'
+              - 'ec2:DescribeSpotInstanceRequests'
+              - 'ec2:DescribeSpotPriceHistory'
+              - 'ec2:DescribeSubnets'
+              - 'ec2:DescribeTags'
+              - 'ec2:DescribeVpcAttribute'
+              - 'ec2:DescribeVpcEndpoints'
+              - 'ec2:DescribeVpcEndpointServices'
+              - 'ec2:DescribeVpcs'
+              - 'ec2:DetachNetworkInterface'
+              - 'ec2:ModifyImageAttribute'
+              - 'ec2:ModifyInstanceAttribute'
+              - 'ec2:RequestSpotInstances'
+              - 'ec2:RevokeSecurityGroupEgress'
+              - 'ec2:RunInstances'
+              - 'ec2:TerminateInstances'
+              - 'ec2:DeleteVolume'
+              - 'ec2:DescribeVolumeStatus'
+              - 'ec2:DescribeVolumes'
+              - 'ec2:DetachVolume'
+              - 'iam:GetRole'
+              - 'iam:GetRolePolicy'
+              - 'iam:ListInstanceProfiles'
+              - 'iam:ListRolePolicies'
+              - 'iam:PassRole'
+              - 'sdb:BatchPutAttributes'
+              - 'sdb:Select'
+              - 'sqs:CreateQueue'
+              - 'sqs:Delete*'
+              - 'sqs:GetQueue*'
+              - 'sqs:PurgeQueue'
+              - 'sqs:ReceiveMessage'
+              - 'cloudwatch:PutMetricAlarm'
+              - 'cloudwatch:DescribeAlarms'
+              - 'cloudwatch:DeleteAlarms'
+              - 'application-autoscaling:RegisterScalableTarget'
+              - 'application-autoscaling:DeregisterScalableTarget'
+              - 'application-autoscaling:PutScalingPolicy'
+              - 'application-autoscaling:DeleteScalingPolicy'
+              - 'application-autoscaling:Describe*'
+          - Effect: Allow
+            Action: 'iam:CreateServiceLinkedRole'
+            Resource: >-
+              arn:aws:iam::*:role/aws-service-role/spot.amazonaws.com/AWSServiceRoleForEC2Spot*
+            Condition:
+              StringLike:
+                'iam:AWSServiceName': spot.amazonaws.com
+      Roles:
+        - !Ref LakeFormationEMRRole
+
+  #EMR Service role
+  LakeFormationEMRRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2008-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: elasticmapreduce.amazonaws.com
+            Action: 'sts:AssumeRole'
+      RoleName: !Sub 'LF-EMR-Role-${AWS::StackName}'
+
+  lfEmrInstanceProfilePolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: LF-EMR-InstanceProfile-Policy-v2
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Resource: '*'
+            Action:
+              - 'dynamodb:CreateTable'
+              - 'dynamodb:BatchGetItem'
+              - 'dynamodb:BatchWriteItem'
+              - 'dynamodb:PutItem'
+              - 'dynamodb:DescribeTable'
+              - 'dynamodb:DeleteItem'
+              - 'dynamodb:GetItem'
+              - 'dynamodb:Scan'
+              - 'dynamodb:Query'
+              - 'dynamodb:UpdateItem'
+              - 'dynamodb:DeleteTable'
+              - 'dynamodb:UpdateTable'
+              - 'dynamodb:ListTables'
+              - 'elasticmapreduce:Describe*'
+              - 'elasticmapreduce:ListBootstrapActions'
+              - 'elasticmapreduce:ListClusters'
+              - 'elasticmapreduce:ListInstanceGroups'
+              - 'elasticmapreduce:ListInstances'
+              - 'elasticmapreduce:ListSteps'
+              - 'kinesis:CreateStream'
+              - 'kinesis:DeleteStream'
+              - 'kinesis:DescribeStream'
+              - 'kinesis:GetRecords'
+              - 'kinesis:GetShardIterator'
+              - 'kinesis:MergeShards'
+              - 'kinesis:PutRecord'
+              - 'kinesis:SplitShard'
+              - 'rds:Describe*'
+              - 'sqs:GetQueueUrl'
+              - 'sqs:DeleteMessageBatch'
+              - 'sqs:ReceiveMessage'
+              - 'sqs:DeleteQueue'
+              - 'sqs:SendMessage'
+              - 'sqs:CreateQueue'
+          - Effect: Allow
+            Action:
+              - 'cloudwatch:PutMetricData'
+            Resource: '*'
+          - Effect: Allow
+            Action:
+              - 'logs:CreateLogGroup'
+              - 'logs:CreateLogStream'
+              - 'logs:DescribeLogGroups'
+              - 'logs:DescribeLogStreams'
+              - 'logs:PutLogEvents'
+            Resource: '*'
+          - Effect: Allow
+            Action: 'iam:PassRole'
+            Resource: !GetAtt LakeFormationSAMLRole.Arn
+          - Effect: Allow
+            Action: 'sts:AssumeRole'
+            Resource: !GetAtt LakeFormationEMRRole.Arn
+          - Effect: Allow
+            Action: 'lakeformation:GetTemporaryUserCredentialsWithSAML'
+            Resource: '*'
+          - Effect: Allow
+            Action: 'iam:GetRole'
+            Resource:
+              - !GetAtt LakeFormationEMRRole.Arn
+              - !GetAtt LakeFormationSAMLRole.Arn
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+              - 's3:ListBucket'
+            Resource:
+              - 'arn:aws:s3:::aws-bigdata-blog'
+              - >-
+                arn:aws:s3:::aws-bigdata-blog/artifacts/aws-blog-authn-emr-okta-authz-lake-formation/Artifacts/*
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+              - 's3:ListBucket'
+            Resource:
+              - !Ref DataBucketArn
+              - !Sub '${DataBucketArn}/*'
+      Roles:
+        - !Ref LakeFormationEMRInstanceProfileRole
 
   LakeFormationEMRInstanceProfileRole:
     Type: 'AWS::IAM::Role'
@@ -85,6 +299,7 @@ Resources:
               Service: ec2.amazonaws.com
             Action: 'sts:AssumeRole'
       RoleName: !Sub 'LF-EMR-InstanceProfile-Role-${AWS::StackName}'
+
   LFEMRInstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
@@ -92,6 +307,7 @@ Resources:
       Path: /
       Roles:
         - !Ref LakeFormationEMRInstanceProfileRole
+
   LFEMRSecurityConfiguration:
     Type: 'AWS::EMR::SecurityConfiguration'
     DependsOn:
@@ -100,13 +316,9 @@ Resources:
       Name: !Sub 'LF-EMR-SecurityConfiguration-${AWS::StackName}'
       SecurityConfiguration:
         LakeFormationConfiguration:
-          IdpMetadataS3Path: !Sub '${userBucketName}/IdP-metadata/okta-metadata.xml'
-          EmrRoleForUsersARN: !GetAtt 
-            - LakeFormationEMRRole
-            - Arn
-          LakeFormationRoleForSAMLPrincipalARN: !GetAtt 
-            - LakeFormationSAMLRole
-            - Arn
+          IdpMetadataS3Path: !Sub 's3://${DataBucketName}/IdP-metadata/okta-metadata.xml'
+          EmrRoleForUsersARN: !GetAtt LakeFormationEMRRole.Arn
+          LakeFormationRoleForSAMLPrincipalARN: !GetAtt LakeFormationSAMLRole.Arn
         AuthenticationConfiguration:
           KerberosConfiguration:
             Provider: ClusterDedicatedKdc
@@ -120,15 +332,18 @@ Resources:
         - '-'
         - - lf-emr-logs-bucket
           - !Sub '${AWS::AccountId}-${AWS::StackName}'
+
   EMRCluster:
     Type: 'AWS::EMR::Cluster'
     DependsOn:
       - LFEMRSecurityConfiguration
       - LakeFormationEMRInstanceProfileRole
       - LFEMRInstanceProfile
-      - customResourceForOktaLambda
+      - MasterNodeAdditionalSG
     Properties:
       Instances:
+        AdditionalMasterSecurityGroups:
+          - !Ref MasterNodeAdditionalSG
         MasterInstanceGroup:
           InstanceCount: 1
           InstanceType: !Ref InstanceType
@@ -140,10 +355,7 @@ Resources:
           Market: ON_DEMAND
           Name: cfnCore
         Ec2SubnetId: !Ref VPCSubnet
-        Ec2KeyName: !If 
-          - HasKeyName
-          - !Ref EC2KeyPair
-          - !Ref 'AWS::NoValue'
+        Ec2KeyName: !Ref EC2KeyPair
       Name: !Sub 'LF-EMRCluster-${AWS::StackName}'
       Applications:
         - Name: Hadoop
@@ -157,7 +369,7 @@ Resources:
       JobFlowRole: !Ref LFEMRInstanceProfile
       KerberosAttributes:
         KdcAdminPassword: !Ref KdcAdminPassword
-        Realm: !Ref Realm
+        Realm: 'EC2.INTERNAL'
       ServiceRole: !Ref LakeFormationEMRRole
       ReleaseLabel: !Ref ReleaseLabel
       SecurityConfiguration: !Ref LFEMRSecurityConfiguration
@@ -168,4 +380,160 @@ Resources:
           ScriptBootstrapAction:
             Path: >-
               s3://aws-bigdata-blog/artifacts/aws-blog-authn-emr-okta-authz-lake-formation/Artifacts/update-java-version.sh
-        #add shells script modify here
+        #add shell script modify here
+
+  ACMCertificate: 
+    Type: "AWS::CertificateManager::Certificate"
+    Properties: 
+      DomainName: !Ref DomainName
+      DomainValidationOptions:
+        - 
+          DomainName: !Ref DomainName
+          HostedZoneId: !Ref HostedZoneId
+      ValidationMethod: DNS
+
+  ZeppelinTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    DependsOn: EMRCluster
+    Properties: 
+      HealthCheckPath: "/gateway/default/zeppelin/"
+      HealthCheckProtocol: "HTTPS"
+      Name: !Sub 'emr-blog-tg-${AWS::StackName}'
+      Port: 8442
+      Protocol: HTTPS
+      ProtocolVersion: HTTP1
+      Targets: 
+        - 
+          Id: !Sub
+            - '${MasterNodeIp}'
+            - MasterNodeIp: !Join
+              - '.'
+              - - !Select
+                    - 1
+                    - !Split
+                        - "-"
+                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]
+                - !Select
+                    - 2
+                    - !Split
+                        - "-"
+                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]
+                - !Select
+                    - 3
+                    - !Split
+                        - "-"
+                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]
+                - !Select
+                    - 4
+                    - !Split
+                        - "-"
+                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]     
+      TargetType: ip
+      VpcId: !Ref VPCId
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: "Security group for ALB"
+      GroupName: !Sub 'emr-blog-alb-sg-${AWS::StackName}'
+      SecurityGroupIngress: 
+        - CidrIp: 0.0.0.0/0 #give option to lock down
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+        - CidrIp: 0.0.0.0/0 #give option to lock down
+          IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+      VpcId: !Ref VPCId #GET FROM PARAM
+
+  MasterNodeAdditionalSG:
+    Type: AWS::EC2::SecurityGroup
+    DependsOn: ALBSecurityGroup
+    Properties: 
+      GroupDescription: "Security group for Master node to allow access to Zeppelin"
+      GroupName: !Sub 'emr-blog-mn-sg-${AWS::StackName}'
+      SecurityGroupIngress: 
+        - SourceSecurityGroupId: !Ref ALBSecurityGroup
+          IpProtocol: tcp
+          FromPort: 8442
+          ToPort: 8442
+      VpcId: !Ref VPCId
+  
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    DependsOn: ALBSecurityGroup
+    Properties: 
+      IpAddressType: ipv4
+      Name: !Sub 'emr-blog-alb-${AWS::StackName}' #max 32 chars
+      Scheme: internet-facing
+      SecurityGroups: 
+        - !Ref ALBSecurityGroup
+      Subnets: 
+        - !Ref PublicSubnet1Id
+        - !Ref PublicSubnet2Id
+      Type: application
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn: ALB
+    Properties: 
+      DefaultActions: 
+        -
+          Type: redirect
+          RedirectConfig:
+            Host: "#{host}"
+            Path: "/#{path}"
+            Port: 443
+            Protocol: HTTPS
+            Query: "{query}"
+            StatusCode: "HTTP_301"
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+  ALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn: 
+      - ALB
+      - ACMCertificate
+    Properties: 
+      Certificates: 
+        - 
+          CertificateArn: !Ref ACMCertificate
+      DefaultActions: 
+        -
+          Type: forward
+          TargetGroupArn: !Ref ZeppelinTG
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
+
+  R53RecordSet:
+    Type: AWS::Route53::RecordSetGroup
+    DependsOn: ALB
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Comment: ALB RecordSet.
+      RecordSets:
+      - Name: !Ref DomainName
+        Type: A
+        AliasTarget:
+          HostedZoneId: !GetAtt ALB.CanonicalHostedZoneID
+          DNSName: !GetAtt ALB.DNSName
+
+Outputs:
+  OktaAttributes:
+    Description: >-
+      The value for the attribute statement
+      https://aws.amazon.com/SAML/Attributes/Role, to be updated in Okta
+    Value: !Join 
+      - ','
+      - - !GetAtt 
+          - LakeFormationSAMLRole
+          - Arn
+        - !Sub 'arn:aws:iam::${AWS::AccountId}:saml-provider/${SAMLProviderName}'
+  ZeppelinURL:
+    Description: ZeppelinURL
+    Value: !Sub 'https://${DomainName}/gateway/default/zeppelin/'
