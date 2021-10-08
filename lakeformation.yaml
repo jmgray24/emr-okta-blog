@@ -1,4 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
+Description:  Deploys LF databases and configures perms
 
 Parameters:
   LFDatabaseName:
@@ -30,7 +31,45 @@ Resources:
         - '-'
         - - emrblog-data
           - !Sub '${AWS::AccountId}'
-          
+
+  LFDataAccessPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    DependsOn: 
+      - customResourceForIdPLambda
+    Properties:
+      ManagedPolicyName: LF-DataAccess-Policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+            Resource: !Join
+              - ''
+              - - !GetAtt S3DataBucket.Arn
+                - /Data/*
+          - Effect: Allow
+            Action:
+              - 's3:ListBucket'
+            Resource: !GetAtt S3DataBucket.Arn
+      Roles:
+        - !Ref LFDataAccessRole
+
+  LFDataAccessRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lakeformation.amazonaws.com
+            Action: 'sts:AssumeRole'
+      RoleName: LF-EMR-DataAccessRole
+
   RegisterLFDataLocation:
     Type: 'AWS::LakeFormation::Resource'
     DependsOn:
@@ -40,9 +79,8 @@ Resources:
         - ''
         - - !GetAtt S3DataBucket.Arn
           - /Data/
-      RoleArn: !Sub >-
-        arn:aws:iam::${AWS::AccountId}:role/aws-service-role/lakeformation.amazonaws.com/AWSServiceRoleForLakeFormationDataAccess
-      UseServiceLinkedRole: true
+      RoleArn: !GetAtt LFDataAccessRole.Arn
+      UseServiceLinkedRole: false
 
   LFDatabase:
     Type: AWS::Glue::Database
