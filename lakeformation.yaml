@@ -250,16 +250,18 @@ Resources:
                       return send_response(event, response)
                   elif event['RequestType'] == 'Delete':
                       print('deleting...')
-                      queryResponse = s3Client.delete_object(
-                          Bucket=dataBucketName,
-                          Key='IdP-metadata/okta-metadata.xml')
+                      #queryResponse = s3Client.delete_object(
+                      #    Bucket=dataBucketName,
+                      #    Key='IdP-metadata/okta-metadata.xml')
 
-                      queryResponse = s3Client.list_objects_v2(Bucket=dataBucketName, StartAfter='Data/')
-                      for content in queryResponse['Contents']:
-                          s3Client.delete_object(
-                          Bucket=dataBucketName,
-                          Key=content['Key'])
+                      #queryResponse = s3Client.list_objects_v2(Bucket=dataBucketName, StartAfter='Data/')
+                      #for content in queryResponse['Contents']:
+                      #    s3Client.delete_object(
+                      #    Bucket=dataBucketName,
+                      #    Key=content['Key'])
 
+                      bucket = s3.Bucket(dataBucketName)
+                      bucket.objects.delete()
                       queryResponse = iam.delete_saml_provider(SAMLProviderArn='arn:aws:iam::' + os.environ['AWSAccountId'] + ':saml-provider/' + samlProviderName)
                       return send_response(event, response)
 
@@ -309,7 +311,7 @@ Resources:
           AWSAccountId: !Sub '${AWS::AccountId}'
           OktaAppMetadataURL: !Ref OktaAppMetadataURL
           BlogBucketName: 'lfdbtest-blog'
-      Description: ''
+      Description: 't'
       MemorySize: 128
       Timeout: 900
       Role: !GetAtt IdPLambdaExecutionRole.Arn
