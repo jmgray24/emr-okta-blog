@@ -137,7 +137,7 @@ Resources:
       - LFDatabaseTable
     Properties: 
       DataLakePrincipal: 
-        DataLakePrincipalIdentifier: !Sub arn:aws:iam::${AWS::AccountId}:saml-provider/${SAMLProviderName}-${AWS::StackName}:user/${LFSAMLUserName}
+        DataLakePrincipalIdentifier: !Sub arn:aws:iam::${AWS::AccountId}:saml-provider/${SAMLProviderName}:user/${LFSAMLUserName}
       Permissions: 
         - SELECT
       Resource: 
@@ -229,7 +229,7 @@ Resources:
       ServiceToken: !GetAtt exportIdPMetadataLambda.Arn
       StackName: !Ref 'AWS::StackName'
       DataBucketName: !Ref S3DataBucket
-      SAMLProviderName: !Sub ${SAMLProviderName}-${AWS::StackName}
+      SAMLProviderName: !Sub ${SAMLProviderName}
       AWSAccountId: !Sub '${AWS::AccountId}'
       OktaAppMetadataURL: !Ref OktaAppMetadataURL
       SourceBucketName: 'emr-okta-blog'
