@@ -95,15 +95,15 @@ Parameters:
   
   #LF
   LFDatabaseName:
-    Description: blah
+    Description: TBD
     Type: String
     Default: emrblogdb
   LFTableName:
-    Description: blah
+    Description: TBD
     Type: String
     Default: cardata
   LFSAMLUserName:
-    Description: blah
+    Description: TBD
     Type: String
     Default: analyst
   OktaAppMetadataURL:
@@ -151,7 +151,7 @@ Resources:
   NetworkingStack:
     Type: 'AWS::CloudFormation::Stack'
     Properties:
-      TemplateURL: 'https://lfdbtest-blog.s3.amazonaws.com/templates/networking.yaml'
+      TemplateURL: 'https://emr-okta-blog.s3.amazonaws.com/templates/networking.yaml'
       Parameters:
         VpcCIDR: !Ref VpcCIDR
         PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
@@ -162,18 +162,18 @@ Resources:
   LakeFormationStack:
     Type: 'AWS::CloudFormation::Stack'
     Properties:
-      TemplateURL: 'https://lfdbtest-blog.s3.amazonaws.com/templates/lakeformation.yaml'
+      TemplateURL: 'https://emr-okta-blog.s3.amazonaws.com/templates/lakeformation.yaml'
       Parameters:
         LFDatabaseName: !Ref LFDatabaseName
         LFTableName: !Ref LFTableName
         LFSAMLUserName: !Ref LFSAMLUserName
-        SAMLProviderName: !Ref SAMLProviderName
+        SAMLProviderName: !Sub ${SAMLProviderName}-${AWS::StackName}
         OktaAppMetadataURL: !Ref OktaAppMetadataURL
 
   EMRStack:
     Type: 'AWS::CloudFormation::Stack'
     Properties:
-      TemplateURL: 'https://lfdbtest-blog.s3.amazonaws.com/templates/emr.yaml'
+      TemplateURL: 'https://emr-okta-blog.s3.amazonaws.com/templates/emr.yaml'
       Parameters:
         EC2KeyPair: !Ref EC2KeyPair
         DataBucketName: !GetAtt 
@@ -199,7 +199,7 @@ Resources:
         PublicSubnet2Id: !GetAtt 
           - NetworkingStack
           - Outputs.PublicSubnet2
-        SAMLProviderName: !Ref SAMLProviderName
+        SAMLProviderName: !Sub ${SAMLProviderName}-${AWS::StackName}
 
 Outputs:
   OktaAttributes:

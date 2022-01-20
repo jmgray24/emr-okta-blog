@@ -23,8 +23,9 @@ Parameters:
     Default: Password@123
   ReleaseLabel:
     Type: String
-    Default: emr-5.33.0
+    Default: emr-5.33.1
     AllowedValues:
+      - emr-5.33.1
       - emr-5.33.0
       - emr-5.32.0
       - emr-5.31.0
@@ -274,9 +275,9 @@ Resources:
               - 's3:GetObject'
               - 's3:ListBucket'
             Resource:
-              - 'arn:aws:s3:::lfdbtest-blog'
+              - 'arn:aws:s3:::emr-okta-blog'
               - >-
-                arn:aws:s3:::lfdbtest-blog/scripts/*
+                arn:aws:s3:::emr-okta-blog/scripts/*
           - Effect: Allow
             Action:
               - 's3:GetObject'
@@ -326,11 +327,10 @@ Resources:
 
   S3EMRLogsBucket:
     Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
-      BucketName: !Join 
-        - '-'
-        - - emrblog-logs
-          - !Sub '${AWS::AccountId}'
+      BucketName: !Join ['-', ['emrblog-logs', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
 
   EMRCluster:
     Type: 'AWS::EMR::Cluster'
@@ -375,12 +375,83 @@ Resources:
       #  - Name: update-java-version
       #    ScriptBootstrapAction:
       #      Path: >-
-      #        s3://lfdbtest-blog/scripts/update-java-version.sh
+      #        s3://emr-okta-blog/scripts/update-java-version.sh
       #  - Name: install-ssm-agent
       #    ScriptBootstrapAction:
       #      Path: >-
-      #        s3://lfdbtest-blog/scripts/install-ssm-agent.sh
+      #        s3://emr-okta-blog/scripts/install-ssm-agent.sh
         #add shell script modify here
+
+
+  fetchIpLambdaPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    DependsOn: EMRCluster
+    Properties:
+      ManagedPolicyName: fetchIp-Lambda-Policy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action: 'elasticmapreduce:ListInstances'
+            Resource: !Sub 'arn:aws:elasticmapreduce:${AWS::Region}:${AWS::AccountId}:cluster/${EMRCluster}'
+            Effect: Allow
+          - Action: 'logs:CreateLogGroup'
+            Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+            Effect: Allow
+          - Action:
+              - 'logs:CreateLogStream'
+              - 'logs:PutLogEvents'
+            Resource:
+              - !Sub >-
+                arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/fetchMasterNodeIp-${AWS::StackName}:*
+            Effect: Allow
+          - Action:
+              - 's3:GetObject'
+              - 's3:List*'
+            Resource:
+              - 'arn:aws:s3:::emr-okta-blog'
+              - 'arn:aws:s3:::emr-okta-blog/artifacts/*'
+            Effect: Allow
+      Roles:
+        - !Ref fetchIpLambdaExecutionRole
+
+  fetchIpLambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      RoleName: !Sub 'fetchIp-Lambda-Role-${AWS::StackName}'
+
+  fetchMasterNodeIpLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: fetchMasterNodeIp.handler
+      FunctionName: !Sub 'fetchMasterNodeIp-${AWS::StackName}'
+      Runtime: python3.9
+      Code:
+        S3Bucket: emr-okta-blog
+        S3Key: >-
+          artifacts/fetchmasternodeip.py.zip
+      Description: 'Fetch master node IP address of EMR Cluster.'
+      MemorySize: 128
+      Timeout: 60
+      Role: !GetAtt fetchIpLambdaExecutionRole.Arn
+
+  customResourceForMasterNodeIpLambda:
+    Type: 'AWS::CloudFormation::CustomResource'
+    DependsOn:
+      - fetchIpLambdaExecutionRole
+      - fetchIpLambdaPolicy
+    Version: '1.0'
+    Properties:
+      ServiceToken: !GetAtt fetchMasterNodeIpLambda.Arn
+      StackName: !Ref 'AWS::StackName'
+      ClusterId: !Ref EMRCluster
 
   ACMCertificate: 
     Type: "AWS::CertificateManager::Certificate"
@@ -401,32 +472,8 @@ Resources:
       Port: 8442
       Protocol: HTTPS
       ProtocolVersion: HTTP1
-      Targets: 
-        - 
-          Id: !Sub
-            - '${MasterNodeIp}'
-            - MasterNodeIp: !Join
-              - '.'
-              - - !Select
-                    - 1
-                    - !Split
-                        - "-"
-                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]
-                - !Select
-                    - 2
-                    - !Split
-                        - "-"
-                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]
-                - !Select
-                    - 3
-                    - !Split
-                        - "-"
-                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]
-                - !Select
-                    - 4
-                    - !Split
-                        - "-"
-                        - !Select [0, !Split [".ec2.internal", !GetAtt EMRCluster.MasterPublicDNS]]     
+      Targets:
+        - Id: !GetAtt customResourceForMasterNodeIpLambda.MasterNodeIp
       TargetType: ip
       VpcId: !Ref VPCId
 

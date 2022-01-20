@@ -27,10 +27,7 @@ Resources:
   S3DataBucket:
     Type: 'AWS::S3::Bucket'
     Properties:
-      BucketName: !Join 
-        - '-'
-        - - emrblog-data
-          - !Sub '${AWS::AccountId}'
+      BucketName: !Join ['-', ['emrblog-data', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
 
   LFDataAccessPolicy:
     Type: 'AWS::IAM::ManagedPolicy'
@@ -140,7 +137,7 @@ Resources:
       - LFDatabaseTable
     Properties: 
       DataLakePrincipal: 
-        DataLakePrincipalIdentifier: !Sub arn:aws:iam::${AWS::AccountId}:saml-provider/${SAMLProviderName}:user/${LFSAMLUserName}
+        DataLakePrincipalIdentifier: !Sub arn:aws:iam::${AWS::AccountId}:saml-provider/${SAMLProviderName}-${AWS::StackName}:user/${LFSAMLUserName}
       Permissions: 
         - SELECT
       Resource: 
@@ -178,8 +175,9 @@ Resources:
               - 's3:GetObject'
               - 's3:List*'
             Resource:
-              - 'arn:aws:s3:::lfdbtest-blog'
-              - 'arn:aws:s3:::lfdbtest-blog/data/*'
+              - 'arn:aws:s3:::emr-okta-blog'
+              - 'arn:aws:s3:::emr-okta-blog/data/*'
+              - 'arn:aws:s3:::emr-okta-blog/artifacts/*'
             Effect: Allow
           - Action: 'logs:CreateLogGroup'
             Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
@@ -209,119 +207,32 @@ Resources:
   exportIdPMetadataLambda:
     Type: 'AWS::Lambda::Function'
     Properties:
-      Handler: index.lambda_handler
+      Handler: exportIdpMetadata.handler
       FunctionName: !Sub 'exportIdPMetadata-${AWS::StackName}'
-      Runtime: python3.7
+      Runtime: python3.9
       Code:
-        ZipFile: |
-          import json
-          import urllib
-          import urllib.request
-          import boto3
-          import os
-          import time
-          import http.client
-          import urllib.parse
-          import sys
-          import uuid
-
-          def lambda_handler(event, context):
-              response = {
-                  'StackId': event['StackId'],
-                  'RequestId': event['RequestId'],
-                  'LogicalResourceId': event['LogicalResourceId'],
-                  'Status': 'SUCCESS'
-              }
-
-              if 'PhysicalResourceId' in event:
-                  response['PhysicalResourceId'] = event['PhysicalResourceId']
-              else:
-                  response['PhysicalResourceId'] = str(uuid.uuid4())
-
-              s3 = boto3.resource('s3')
-              s3Client = boto3.client('s3')
-              iam = boto3.client('iam')
-              dataBucketName = os.environ['DataBucketName']
-              sourceBucketName = os.environ['BlogBucketName']
-              samlProviderName = os.environ['SAMLProviderName']
-
-              try:
-                  if event['RequestType'] == 'Update':
-                      return send_response(event, response)
-                  elif event['RequestType'] == 'Delete':
-                      print('deleting...')
-                      #queryResponse = s3Client.delete_object(
-                      #    Bucket=dataBucketName,
-                      #    Key='IdP-metadata/okta-metadata.xml')
-
-                      #queryResponse = s3Client.list_objects_v2(Bucket=dataBucketName, StartAfter='Data/')
-                      #for content in queryResponse['Contents']:
-                      #    s3Client.delete_object(
-                      #    Bucket=dataBucketName,
-                      #    Key=content['Key'])
-
-                      bucket = s3.Bucket(dataBucketName)
-                      bucket.objects.delete()
-                      queryResponse = iam.delete_saml_provider(SAMLProviderArn='arn:aws:iam::' + os.environ['AWSAccountId'] + ':saml-provider/' + samlProviderName)
-                      return send_response(event, response)
-
-                  with urllib.request.urlopen(os.environ['OktaAppMetadataURL']) as f:
-                      file_content = f.read()
-                  s3.Bucket(dataBucketName).put_object(Key='IdP-metadata/okta-metadata.xml', Body=file_content)
-
-                  queryResponse = iam.create_saml_provider(SAMLMetadataDocument=file_content.decode('utf-8'), Name=samlProviderName)
-
-                  queryResponse = s3Client.list_objects_v2(Bucket=sourceBucketName, Prefix='')
-                  destBucket = s3.Bucket(dataBucketName)
-                  for content in queryResponse['Contents']:
-                      myKey = content['Key']
-                      myFile = myKey[myKey.rfind('/') + 1:]
-                      if not myFile == '' and 'data/' in myKey:
-                          copy_source = {'Bucket': sourceBucketName, 'Key': myKey}
-                          queryResponse = destBucket.copy(copy_source, 'Data/' + myFile)
-              except Exception as e:
-                  print("Encountered exception: {}".format(e))
-                  return send_response(event, response, reason=str(e))
-
-              return send_response(event, response, reason='SUCCESS')
-
-          def send_response(request, response, status=None, reason=None):
-              if status is not None:
-                  response['Status'] = status
-              if reason is not None:
-                  response['Reason'] = reason
-              if 'ResponseURL' in request and request['ResponseURL']:
-                  if not reason == None:
-                      print("Reason: {}".format(reason))
-                  if 'RequestType' in request and request['RequestType']:
-                      print("RequestType: {}".format(request['RequestType']))
-                  print("Response: {}".format(response))
-                  try:
-                      url = urllib.parse.urlparse(request['ResponseURL'])
-                      body = json.dumps(response)
-                      https = http.client.HTTPSConnection(url.hostname)
-                      https.request('PUT', url.path + '?' + url.query, body)
-                  except:
-                      print('Failed to send the response to the provided URL')
-              return response
-      Environment:
-        Variables:
-          DataBucketName: !Ref S3DataBucket
-          SAMLProviderName: !Ref SAMLProviderName
-          AWSAccountId: !Sub '${AWS::AccountId}'
-          OktaAppMetadataURL: !Ref OktaAppMetadataURL
-          BlogBucketName: 'lfdbtest-blog'
-      Description: 't'
+        S3Bucket: emr-okta-blog
+        S3Key: >-
+          artifacts/exportidpmetadata.py.zip
+      Description: 'Prepares data and creates IdP metadata entry.'
       MemorySize: 128
       Timeout: 900
       Role: !GetAtt IdPLambdaExecutionRole.Arn
 
   customResourceForIdPLambda:
     Type: 'AWS::CloudFormation::CustomResource'
+    DependsOn:
+      - IdPLambdaExecutionRole
+      - IdPLambdaPolicy
     Version: '1.0'
     Properties:
       ServiceToken: !GetAtt exportIdPMetadataLambda.Arn
       StackName: !Ref 'AWS::StackName'
+      DataBucketName: !Ref S3DataBucket
+      SAMLProviderName: !Sub ${SAMLProviderName}-${AWS::StackName}
+      AWSAccountId: !Sub '${AWS::AccountId}'
+      OktaAppMetadataURL: !Ref OktaAppMetadataURL
+      SourceBucketName: 'emr-okta-blog'
 
 Outputs:
   DataBucketName:
@@ -330,6 +241,9 @@ Outputs:
   DataBucketArn:
     Description: S3DataBucket ARN
     Value: !GetAtt S3DataBucket.Arn
+  SAMLProviderArn:
+    Description: SAML Provider ARN
+    Value: !GetAtt customResourceForIdPLambda.SAMLProviderArn
   
   
 
