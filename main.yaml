@@ -130,8 +130,9 @@ Parameters:
     Default: Password@123
   ReleaseLabel:
     Type: String
-    Default: emr-5.33.0
+    Default: emr-5.33.1
     AllowedValues:
+      - emr-5.33.1
       - emr-5.33.0
       - emr-5.32.0
       - emr-5.31.0
