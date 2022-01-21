@@ -14,7 +14,7 @@ def handler(event, context):
 @helper.update
 def fetch_ip(event, context):
     cluster_id = event['ResourceProperties']['ClusterId']
-    emr = boto3.client("emr")
+    emr = boto3.client('emr')
     instances = emr.list_instances(
         ClusterId=cluster_id,
         InstanceGroupTypes=[
@@ -24,8 +24,10 @@ def fetch_ip(event, context):
             'RUNNING',
         ]
     )
-    helper.Data['MasterNodeIp'] = instances["Instances"][0]["PrivateIpAddress"]
-    print(instances["Instances"][0]["PrivateIpAddress"])
+    helper.Data['MasterNodeIp'] = instances['Instances'][0]['PrivateIpAddress']
+    helper.Data['MasterNodeInstanceId'] = instances['Instances'][0]['Ec2InstanceId']
+    print(instances['Instances'][0]['PrivateIpAddress'])
+    print(instances['Instances'][0]['Ec2InstanceId'])
 
 @helper.delete
 def no_op(_, __):

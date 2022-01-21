@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description:  Deploys LF databases and configures perms
+Description:  Deploys LakeFormation databases and associated permissions and resources
 
 Parameters:
   LFDatabaseName:
@@ -21,9 +21,7 @@ Parameters:
   OktaAppMetadataURL:
     Type: String
 
-# Resources section defines metadata for the Data Catalog
 Resources:
-
   S3DataBucket:
     Type: 'AWS::S3::Bucket'
     Properties:
@@ -34,7 +32,7 @@ Resources:
     DependsOn: 
       - customResourceForIdPLambda
     Properties:
-      ManagedPolicyName: LF-DataAccess-Policy
+      #ManagedPolicyName: LF-DataAccess-Policy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -65,7 +63,7 @@ Resources:
               Service:
                 - lakeformation.amazonaws.com
             Action: 'sts:AssumeRole'
-      RoleName: LF-EMR-DataAccessRole
+      #RoleName: LF-EMR-DataAccessRole
 
   RegisterLFDataLocation:
     Type: 'AWS::LakeFormation::Resource'
@@ -149,14 +147,14 @@ Resources:
   IdPLambdaPolicy:
     Type: 'AWS::IAM::ManagedPolicy'
     Properties:
-      ManagedPolicyName: idp-Lambda-Policy
+      #ManagedPolicyName: idp-Lambda-Policy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
           - Action:
               - 'iam:CreateSAMLProvider'
               - 'iam:DeleteSAMLProvider'
-            Resource: '*'
+            Resource: !Sub 'arn:aws:iam::${AWS::AccountId}:saml-provider/*'
             Effect: Allow
           - Action:
               - 's3:PutObject'
@@ -191,6 +189,7 @@ Resources:
             Effect: Allow
       Roles:
         - !Ref IdPLambdaExecutionRole
+
   IdPLambdaExecutionRole:
     Type: 'AWS::IAM::Role'
     Properties:
@@ -202,7 +201,7 @@ Resources:
               Service:
                 - lambda.amazonaws.com
             Action: 'sts:AssumeRole'
-      RoleName: !Sub 'IdP-Lambda-Role-${AWS::StackName}'
+      #RoleName: !Sub 'IdP-Lambda-Role-${AWS::StackName}'
   
   exportIdPMetadataLambda:
     Type: 'AWS::Lambda::Function'
@@ -244,6 +243,3 @@ Outputs:
   SAMLProviderArn:
     Description: SAML Provider ARN
     Value: !GetAtt customResourceForIdPLambda.SAMLProviderArn
-  
-  
-

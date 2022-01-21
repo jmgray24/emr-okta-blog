@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description:  Deploys VPC and associated subnets
+Description:  Deploys VPC and associated resources
 
 Parameters:
   VpcCIDR:
@@ -67,7 +67,6 @@ Resources:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       CidrBlock: !Ref PublicSubnet1CIDR
-      MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName} Public Subnet (AZ1)
@@ -78,7 +77,6 @@ Resources:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs  '' ]
       CidrBlock: !Ref PublicSubnet2CIDR
-      MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName} Public Subnet (AZ2)
@@ -89,7 +87,6 @@ Resources:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 0, !GetAZs  '' ]
       CidrBlock: !Ref PrivateSubnet1CIDR
-      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName} Private Subnet (AZ1)
@@ -100,7 +97,6 @@ Resources:
       VpcId: !Ref VPC
       AvailabilityZone: !Select [ 1, !GetAZs  '' ]
       CidrBlock: !Ref PrivateSubnet2CIDR
-      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Sub ${AWS::StackName} Private Subnet (AZ2)
@@ -200,7 +196,7 @@ Resources:
       SubnetId: !Ref PrivateSubnet2
 
 Outputs:
-  VPCId:
+  VpcId:
     Description: A reference to the created VPC
     Value: !Ref VPC
 

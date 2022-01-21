@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: "Creates resources for blog post - EMR, VPC, LF Databases Etc"
+Description: "Cloudformation template to create Lakeformation resources, EMR cluster and required Networking infra."
 
 Metadata:
   'AWS::CloudFormation::Interface':
@@ -59,7 +59,6 @@ Metadata:
         default: EC2 Key Pair
 
 Parameters:
-
   #Networking
   VpcCIDR:
     Description: Please enter the IP range (CIDR notation) for this VPC
@@ -87,37 +86,39 @@ Parameters:
     Default: 10.192.21.0/24
     AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
   HostedZoneId:
-    Description: TBD
+    Description: Select a hosted zone for your domain name
     Type: AWS::Route53::HostedZone::Id
   DomainName:
-    Description: TBD
+    Description: >-
+      Enter a domain name that will be used to access Zeppelin (e.g. example.com).
+      This may be the domain name of the hosted zone selected above (if not in use) or a subdomain of the hosted zone (e.g. zeppelin.example.com)
     Type: String
   
   #LF
   LFDatabaseName:
-    Description: TBD
+    Description: Enter a name for your AWS Glue database
     Type: String
     Default: emrblogdb
   LFTableName:
-    Description: TBD
+    Description: Enter a name for your AWS Glue database table
     Type: String
     Default: cardata
   LFSAMLUserName:
-    Description: TBD
+    Description: Enter the displayName of the SAML user you created and assigned to your app in Okta
     Type: String
     Default: analyst
   OktaAppMetadataURL:
-    Description: URL for Okta metadata XML file.
+    Description: Enter the URL of the Okta metadata XML file
     Type: String
   SAMLProviderName:
-    Description: SAML Provider Name Created in AWS
+    Description: Enter a name for the SAML Provider created in AWS IAM
     Type: String
     Default: oktaSAMLProvider
 
   #EMR
   EC2KeyPair:
-    Description: 'Amazon EC2 Key Pair (Optional, for debugging)'
-    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+    Description: Amazon EC2 Key Pair
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair
     Type: 'AWS::EC2::KeyPair::KeyName'
   KdcAdminPassword:
     Type: String
@@ -140,7 +141,7 @@ Parameters:
   InstanceType:
     Type: String
     Default: m5.xlarge
-    Description: EMR Cluster Instance Types for both Master and Core
+    Description: EMR Cluster instance types for both master and core instances
     AllowedValues:
       - m5.xlarge
       - m4.xlarge
@@ -168,7 +169,7 @@ Resources:
         LFDatabaseName: !Ref LFDatabaseName
         LFTableName: !Ref LFTableName
         LFSAMLUserName: !Ref LFSAMLUserName
-        SAMLProviderName: !Sub ${SAMLProviderName}-${AWS::StackName}
+        SAMLProviderName: !Join ['-', [!Ref SAMLProviderName, !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
         OktaAppMetadataURL: !Ref OktaAppMetadataURL
 
   EMRStack:
@@ -185,10 +186,10 @@ Resources:
           - Outputs.DataBucketArn
         KdcAdminPassword: !Ref KdcAdminPassword
         ReleaseLabel: !Ref ReleaseLabel
-        VPCId: !GetAtt 
+        VpcId: !GetAtt 
           - NetworkingStack
-          - Outputs.VPCId
-        VPCSubnet: !GetAtt 
+          - Outputs.VpcId
+        VpcSubnet: !GetAtt 
           - NetworkingStack
           - Outputs.PrivateSubnet1
         InstanceType: !Ref InstanceType
@@ -200,18 +201,27 @@ Resources:
         PublicSubnet2Id: !GetAtt 
           - NetworkingStack
           - Outputs.PublicSubnet2
-        SAMLProviderName: !Sub ${SAMLProviderName}-${AWS::StackName}
-
+        SAMLProviderArn: !GetAtt
+          - LakeFormationStack
+          - Outputs.SAMLProviderArn
 Outputs:
-  OktaAttributes:
-    Description: >-
-      The value for the attribute statement
-      https://aws.amazon.com/SAML/Attributes/Role, to be updated in Okta
+  OktaSingleSignOnUrl:
+    Description: The value for Single sign on URL, to be updated in Okta
     Value: !GetAtt 
       - EMRStack
-      - Outputs.OktaAttributes
-  ZeppelinURL:
+      - Outputs.OktaSingleSignOnUrl
+  OktaRoleAttribute:
+    Description: The value for the attribute statement https://aws.amazon.com/SAML/Attributes/Role, to be updated in Okta
+    Value: !GetAtt 
+      - EMRStack
+      - Outputs.OktaRoleAttribute
+  ZeppelinUrl:
     Description: Zeppelin URL
     Value: !GetAtt 
       - EMRStack
-      - Outputs.ZeppelinURL
+      - Outputs.ZeppelinUrl
+  MasterNodeInstanceId:
+    Description: EC2 instance ID of EMR master node
+    Value: !GetAtt 
+      - EMRStack
+      - Outputs.MasterNodeInstanceId
