@@ -1,6 +1,12 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Deploys Amazon EMR cluster and associated resources
 
+Conditions:
+  HasKeyName: !Not 
+    - !Equals 
+      - ''
+      - !Ref EC2KeyPair
+      
 Parameters:
   EC2KeyPair:
     Description: Amazon EC2 Key Pair
@@ -19,7 +25,6 @@ Parameters:
     Description: >-
       Must be at least 8 characters containing letters, numbers and symbols -
       Eg: Password@123
-    Default: Password@123
   ReleaseLabel:
     Type: String
     Default: emr-5.33.1
@@ -344,7 +349,10 @@ Resources:
           Market: ON_DEMAND
           Name: cfnCore
         Ec2SubnetId: !Ref VpcSubnet
-        Ec2KeyName: !Ref EC2KeyPair
+        Ec2KeyName: !If 
+          - HasKeyName
+          - !Ref EC2KeyPair
+          - !Ref 'AWS::NoValue'
       Name: !Sub 'LF-EMRCluster-${AWS::StackName}'
       Applications:
         - Name: Hadoop

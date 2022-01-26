@@ -7,84 +7,41 @@ Metadata:
       - Label:
           default: Network Configuration
         Parameters:
-          - VpcCIDR
-          - PublicSubnet1CIDR
-          - PublicSubnet2CIDR
-          - PrivateSubnet1CIDR
-          - PrivateSubnet2CIDR
-          - DomainName
           - HostedZoneId
+          - DomainName
       - Label:
           default: Lake Formation Configuration
         Parameters:
           - LFDatabaseName
-          - LFTableName
           - LFSAMLUserName
           - OktaAppMetadataURL
-          - SAMLProviderName
       - Label:
           default: EMR Configuration
         Parameters:
-          - KdcAdminPassword
           - ReleaseLabel
           - InstanceType
-          - EC2KeyPair
+          - KdcAdminPassword
+
     ParameterLabels:
-      VpcCIDR:
-        default: The CIDR range for your VPC
-      PublicSubnet1CIDR:
-        default: The CIDR range for the first public subnet
-      PublicSubnet2CIDR:
-        default: The CIDR range for the second public subnet
-      PrivateSubnet1CIDR:
-        default: The CIDR range for the first private subnet
-      PrivateSubnet2CIDR:
-        default: The CIDR range for the second private subnet
-      DomainName:
-        default: DomainName
       HostedZoneId:
         default: HostedZoneId
-
+      DomainName:
+        default: DomainName
       LFDatabaseName:
-        default: DB name
-      LFTableName: 
-        default: DBTableName
+        default: LFDatabaseName
       LFSAMLUserName:
         default: LFSAMLUserName
       OktaAppMetadataURL: 
         default: OktaAppMetadataURL
-      SAMLProviderName:
-        default: SAMLProviderName
-      EC2KeyPair:
-        default: EC2 Key Pair
+      ReleaseLabel:
+        default: Releaselabel
+      InstanceType:
+        default: InstanceType
+      KdcAdminPassword: 
+        default: KdcAdminPassword
 
 Parameters:
   #Networking
-  VpcCIDR:
-    Description: Please enter the IP range (CIDR notation) for this VPC
-    Type: String
-    Default: 10.192.0.0/16
-    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
-  PublicSubnet1CIDR:
-    Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
-    Type: String
-    Default: 10.192.10.0/24
-    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
-  PublicSubnet2CIDR:
-    Description: Please enter the IP range (CIDR notation) for the public subnet in the second Availability Zone
-    Type: String
-    Default: 10.192.11.0/24
-    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
-  PrivateSubnet1CIDR:
-    Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
-    Type: String
-    Default: 10.192.20.0/24
-    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
-  PrivateSubnet2CIDR:
-    Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
-    Type: String
-    Default: 10.192.21.0/24
-    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
   HostedZoneId:
     Description: Select a hosted zone for your domain name
     Type: AWS::Route53::HostedZone::Id
@@ -96,13 +53,9 @@ Parameters:
   
   #LF
   LFDatabaseName:
-    Description: Enter a name for your AWS Glue database
+    Description: Enter a unique name for your AWS Glue database
     Type: String
     Default: emrblogdb
-  LFTableName:
-    Description: Enter a name for your AWS Glue database table
-    Type: String
-    Default: cardata
   LFSAMLUserName:
     Description: Enter the displayName of the SAML user you created and assigned to your app in Okta
     Type: String
@@ -110,25 +63,8 @@ Parameters:
   OktaAppMetadataURL:
     Description: Enter the URL of the Okta metadata XML file
     Type: String
-  SAMLProviderName:
-    Description: Enter a name for the SAML Provider created in AWS IAM
-    Type: String
-    Default: oktaSAMLProvider
 
   #EMR
-  EC2KeyPair:
-    Description: Amazon EC2 Key Pair
-    ConstraintDescription: Must be the name of an existing EC2 KeyPair
-    Type: 'AWS::EC2::KeyPair::KeyName'
-  KdcAdminPassword:
-    Type: String
-    NoEcho: 'true'
-    AllowedPattern: >-
-      (?=^.{6,255}$)((?=.*\d)(?=.*[A-Z])(?=.*[a-z])|(?=.*\d)(?=.*[^A-Za-z0-9])(?=.*[a-z])|(?=.*[^A-Za-z0-9])(?=.*[A-Z])(?=.*[a-z])|(?=.*\d)(?=.*[A-Z])(?=.*[^A-Za-z0-9]))^.*
-    Description: >-
-      Must be at least 8 characters containing letters, numbers and symbols -
-      Eg: Password@123
-    Default: Password@123
   ReleaseLabel:
     Type: String
     Default: emr-5.33.1
@@ -148,18 +84,21 @@ Parameters:
       - i3.xlarge
       - i3.2xlarge
       - r4.xlarge
+  KdcAdminPassword:
+    Type: String
+    NoEcho: 'true'
+    AllowedPattern: >-
+      (?=^.{6,255}$)((?=.*\d)(?=.*[A-Z])(?=.*[a-z])|(?=.*\d)(?=.*[^A-Za-z0-9])(?=.*[a-z])|(?=.*[^A-Za-z0-9])(?=.*[A-Z])(?=.*[a-z])|(?=.*\d)(?=.*[A-Z])(?=.*[^A-Za-z0-9]))^.*
+    Description: >-
+      Must be at least 8 characters containing letters, numbers and symbols -
+      Eg: Password@123
+    Default: Password@123
 
 Resources:
   NetworkingStack:
     Type: 'AWS::CloudFormation::Stack'
     Properties:
       TemplateURL: 'https://emr-okta-blog.s3.amazonaws.com/templates/networking.yaml'
-      Parameters:
-        VpcCIDR: !Ref VpcCIDR
-        PublicSubnet1CIDR: !Ref PublicSubnet1CIDR
-        PublicSubnet2CIDR: !Ref PublicSubnet2CIDR
-        PrivateSubnet1CIDR: !Ref PrivateSubnet1CIDR
-        PrivateSubnet2CIDR: !Ref PrivateSubnet2CIDR
 
   LakeFormationStack:
     Type: 'AWS::CloudFormation::Stack'
@@ -167,9 +106,9 @@ Resources:
       TemplateURL: 'https://emr-okta-blog.s3.amazonaws.com/templates/lakeformation.yaml'
       Parameters:
         LFDatabaseName: !Ref LFDatabaseName
-        LFTableName: !Ref LFTableName
+        LFTableName: 'citydata'
         LFSAMLUserName: !Ref LFSAMLUserName
-        SAMLProviderName: !Join ['-', [!Ref SAMLProviderName, !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
+        SAMLProviderName: !Join ['-', ['OktaSAMLProvider', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
         OktaAppMetadataURL: !Ref OktaAppMetadataURL
 
   EMRStack:
@@ -177,7 +116,6 @@ Resources:
     Properties:
       TemplateURL: 'https://emr-okta-blog.s3.amazonaws.com/templates/emr.yaml'
       Parameters:
-        EC2KeyPair: !Ref EC2KeyPair
         DataBucketName: !GetAtt 
           - LakeFormationStack
           - Outputs.DataBucketName
@@ -225,3 +163,6 @@ Outputs:
     Value: !GetAtt 
       - EMRStack
       - Outputs.MasterNodeInstanceId
+  LFTableName:
+    Description: Lake Formation table name
+    Value: citydata

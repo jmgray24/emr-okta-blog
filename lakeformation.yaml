@@ -5,21 +5,26 @@ Parameters:
   LFDatabaseName:
     Type: String
     Default: lfdb
+    Description: Enter a unique name for your AWS Lake Formation database
 
   LFTableName:
     Type: String
     Default: lfdb-table
+    Description: Enter a name for your AWS Lake Formation database table
 
   LFSAMLUserName:
     Type: String
     Default: analyst
+    Description: Enter the displayName of the SAML user you created and assigned to your app in Okta
 
   SAMLProviderName:
     Type: String
     Default: OktaSAMLProvider
+    Description: SAML Provider Name Created in AWS
 
   OktaAppMetadataURL:
     Type: String
+    Description: URL for Okta metadata XML file
 
 Resources:
   S3DataBucket:
@@ -32,7 +37,6 @@ Resources:
     DependsOn: 
       - customResourceForIdPLambda
     Properties:
-      #ManagedPolicyName: LF-DataAccess-Policy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -63,7 +67,6 @@ Resources:
               Service:
                 - lakeformation.amazonaws.com
             Action: 'sts:AssumeRole'
-      #RoleName: LF-EMR-DataAccessRole
 
   RegisterLFDataLocation:
     Type: 'AWS::LakeFormation::Resource'
@@ -84,7 +87,7 @@ Resources:
       CatalogId: !Ref AWS::AccountId   
       DatabaseInput:
         Name: !Ref LFDatabaseName
-        Description: Database to hold tables for vehicle data
+        Description: Database to hold tables for US city data
         LocationUri: !Sub
           - 's3://${S3DataBucketName}/Data/'
           - S3DataBucketName: !Ref S3DataBucket
@@ -99,7 +102,7 @@ Resources:
       DatabaseName: !Ref LFDatabaseName
       TableInput:
         Name: !Ref LFTableName
-        Description: Columns for car/toll data
+        Description: Columns for US city data
         TableType: EXTERNAL_TABLE
         Parameters: {
           "classification": "csv"
@@ -107,18 +110,24 @@ Resources:
         StorageDescriptor:
           OutputFormat: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
           Columns:
-          - Name: tollid
-            Type: bigint
-          - Name: col_dateyear
-            Type: bigint
-          - Name: rfid
-            Type: bigint
-          - Name: col_dateday
-            Type: bigint
-          - Name: vehicle_type
+          - Name: city_name
             Type: string
-          - Name: col_datemonth
+          - Name: state_id
             Type: string
+          - Name: state_name
+            Type: string
+          - Name: county
+            Type: string
+          - Name: latitude
+            Type: float
+          - Name: longitude
+            Type: float
+          - Name: population
+            Type: int
+          - Name: timezone
+            Type: string
+          - Name: id
+            Type: int
           InputFormat: org.apache.hadoop.mapred.TextInputFormat
           Location: !Sub
             - 's3://${S3DataBucketName}/Data/'
@@ -147,7 +156,6 @@ Resources:
   IdPLambdaPolicy:
     Type: 'AWS::IAM::ManagedPolicy'
     Properties:
-      #ManagedPolicyName: idp-Lambda-Policy
       PolicyDocument:
         Version: 2012-10-17
         Statement:
@@ -201,7 +209,6 @@ Resources:
               Service:
                 - lambda.amazonaws.com
             Action: 'sts:AssumeRole'
-      #RoleName: !Sub 'IdP-Lambda-Role-${AWS::StackName}'
   
   exportIdPMetadataLambda:
     Type: 'AWS::Lambda::Function'
