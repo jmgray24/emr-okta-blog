@@ -25,7 +25,7 @@ def create_saml_idp(s3, iam, dataBucketName, samlProviderName, oktaAppMetadataUR
     return response['SAMLProviderArn']
 
 def upload_data(s3Client,dataBucketName): 
-    with urllib.request.urlopen('https://emr-okta-blog.s3.amazonaws.com/data/cars.zip') as f:
+    with urllib.request.urlopen('https://emr-okta-blog.s3.amazonaws.com/data/cities.zip') as f:
         file_content = f.read()
     print('Unzipping archive...')
     z = zipfile.ZipFile(BytesIO(file_content)) 
