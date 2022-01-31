@@ -410,7 +410,7 @@ Resources:
     Type: 'AWS::Lambda::Function'
     Properties:
       Handler: fetchMasterNodeIp.handler
-      FunctionName: !Sub 'fetchMasterNodeIp-${AWS::StackName}'
+      FunctionName: !Join ['-', ['fetchMasterNodeIp', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
       Runtime: python3.9
       Code:
         S3Bucket: emr-okta-blog
@@ -481,7 +481,7 @@ Resources:
     Properties:
       SourceSecurityGroupId: !Ref MasterNodeSG
       IpProtocol: icmp
-      FromPort: 8
+      FromPort: -1
       ToPort: -1
       Description: Allow ICMP access from master node
       GroupId: !Ref TaskNodeSG
@@ -511,9 +511,19 @@ Resources:
     Properties:
       SourceSecurityGroupId: !Ref TaskNodeSG
       IpProtocol: icmp
-      FromPort: 8
+      FromPort: -1
       ToPort: -1
       Description: Allow ICMP access from task node
+      GroupId: !Ref TaskNodeSG
+
+  TaskSGRule7:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref ServiceAccessSG
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Allow access from service SG
       GroupId: !Ref TaskNodeSG
 
   MasterSGRule1:
@@ -541,7 +551,7 @@ Resources:
     Properties:
       SourceSecurityGroupId: !Ref TaskNodeSG
       IpProtocol: icmp
-      FromPort: 8
+      FromPort: -1
       ToPort: -1
       Description: Allow ICMP access from task node
       GroupId: !Ref MasterNodeSG
@@ -571,15 +581,35 @@ Resources:
     Properties:
       SourceSecurityGroupId: !Ref MasterNodeSG
       IpProtocol: icmp
-      FromPort: 8
+      FromPort: -1
       ToPort: -1
       Description: Allow ICMP access from MASTER node
+      GroupId: !Ref MasterNodeSG
+
+  MasterSGRule7:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8442
+      ToPort: 8442
+      Description: Allow ALB to access Zeppelin
+      GroupId: !Ref MasterNodeSG
+
+  MasterSGRule8:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref ServiceAccessSG
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Allow access from service SG
       GroupId: !Ref MasterNodeSG
 
   ServiceAccessSGRule1:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
-      SourceSecurityGroupId: !Ref TaskNodeSG
+      SourceSecurityGroupId: !Ref MasterNodeSG
       IpProtocol: tcp
       FromPort: 9443
       ToPort: 9443
@@ -610,17 +640,6 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties: 
       GroupDescription: 'Master node security group for EMR'
-      SecurityGroupIngress: 
-        - SourceSecurityGroupId: !Ref ALBSecurityGroup
-          IpProtocol: tcp
-          FromPort: 8442
-          ToPort: 8442
-          Description: Allow ALB to access Zeppelin
-        - SourceSecurityGroupId: !Ref ServiceAccessSG
-          IpProtocol: tcp
-          FromPort: 8443
-          ToPort: 8443
-          Description: Allow access from service SG
       SecurityGroupEgress:
         - Description: Allow all outbound traffic
           IpProtocol: -1
@@ -631,12 +650,6 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties: 
       GroupDescription: 'Task node security group for EMR'
-      SecurityGroupIngress: 
-        - SourceSecurityGroupId: !Ref ServiceAccessSG
-          IpProtocol: tcp
-          FromPort: 8443
-          ToPort: 8443
-          Description: Allow access from service SG
       SecurityGroupEgress:
         - Description: Allow all outbound traffic
           IpProtocol: -1

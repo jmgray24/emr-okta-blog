@@ -214,7 +214,7 @@ Resources:
     Type: 'AWS::Lambda::Function'
     Properties:
       Handler: exportIdpMetadata.handler
-      FunctionName: !Sub 'exportIdPMetadata-${AWS::StackName}'
+      FunctionName: !Join ['-', ['exportIdPMetadata', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
       Runtime: python3.9
       Code:
         S3Bucket: emr-okta-blog

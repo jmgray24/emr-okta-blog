@@ -60,7 +60,7 @@ Parameters:
   #EMR
   ReleaseLabel:
     Type: String
-    Default: emr-5.33.1
+    Default: emr-5.34.0
     AllowedValues:
       - emr-5.34.0
       - emr-5.33.1
@@ -161,12 +161,12 @@ Outputs:
     Description: Lake Formation table name
     Value: citydata
   Pac4jCallbackUrl:
-    Description: Lake Formation table name
+    Description: pac4j.callbackUrl value to be updated in knoxsso.xml
     Value: !Sub 'https://${DomainName}/gateway/knoxsso/api/v1/websso'
   KnoxProviderUrl:
-    Description: Lake Formation table name
+    Description: knoxJwtRealm.providerUrl value to be updated in shiro.ini
     Value: !Sub 'https://${DomainName}/'
   KnoxRedirectWhitelistRegex:
-    Description: Lake Formation table name
+    Description: knoxsso.redirect.whitelist.regex value to be updated in knoxsso.xml
     Value: !Sub '^https?:\/\/(${DomainName}).*$'
   
