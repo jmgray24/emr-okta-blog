@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: "Cloudformation template to create Lakeformation resources, EMR cluster and required Networking infra."
+Description: "Cloudformation template to create AWS Lakeformation resources, Amazon EMR cluster and required networking infrastructure."
 
 Metadata:
   'AWS::CloudFormation::Interface':
@@ -12,7 +12,6 @@ Metadata:
       - Label:
           default: Lake Formation Configuration
         Parameters:
-          - LFDatabaseName
           - LFSAMLUserName
           - OktaAppMetadataURL
       - Label:
@@ -27,8 +26,6 @@ Metadata:
         default: HostedZoneId
       DomainName:
         default: DomainName
-      LFDatabaseName:
-        default: LFDatabaseName
       LFSAMLUserName:
         default: LFSAMLUserName
       OktaAppMetadataURL: 
@@ -52,10 +49,6 @@ Parameters:
     Type: String
   
   #LF
-  LFDatabaseName:
-    Description: Enter a unique name for your AWS Glue database
-    Type: String
-    Default: emrblogdb
   LFSAMLUserName:
     Description: Enter the displayName of the SAML user you created and assigned to your app in Okta
     Type: String
@@ -69,6 +62,7 @@ Parameters:
     Type: String
     Default: emr-5.33.1
     AllowedValues:
+      - emr-5.34.0
       - emr-5.33.1
       - emr-5.33.0
       - emr-5.32.0
@@ -105,7 +99,7 @@ Resources:
     Properties:
       TemplateURL: 'https://emr-okta-blog.s3.amazonaws.com/templates/lakeformation.yaml'
       Parameters:
-        LFDatabaseName: !Ref LFDatabaseName
+        LFDatabaseName: 'emrlfsamldb'
         LFTableName: 'citydata'
         LFSAMLUserName: !Ref LFSAMLUserName
         SAMLProviderName: !Join ['-', ['OktaSAMLProvider', !Select [4, !Split ['-', !Select [2, !Split ['/', !Ref AWS::StackId]]]]]]
@@ -166,3 +160,13 @@ Outputs:
   LFTableName:
     Description: Lake Formation table name
     Value: citydata
+  Pac4jCallbackUrl:
+    Description: Lake Formation table name
+    Value: !Sub 'https://${DomainName}/gateway/knoxsso/api/v1/websso'
+  KnoxProviderUrl:
+    Description: Lake Formation table name
+    Value: !Sub 'https://${DomainName}/'
+  KnoxRedirectWhitelistRegex:
+    Description: Lake Formation table name
+    Value: !Sub '^https?:\/\/(${DomainName}).*$'
+  

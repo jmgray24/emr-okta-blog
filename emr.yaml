@@ -1,16 +1,7 @@
 AWSTemplateFormatVersion: 2010-09-09
 Description: Deploys Amazon EMR cluster and associated resources
 
-Conditions:
-  HasKeyName: !Not 
-    - !Equals 
-      - ''
-      - !Ref EC2KeyPair
-      
 Parameters:
-  EC2KeyPair:
-    Description: Amazon EC2 Key Pair
-    Type: 'AWS::EC2::KeyPair::KeyName'
   DataBucketName:
     Type: String
     Description: S3 Data bucket name
@@ -27,8 +18,9 @@ Parameters:
       Eg: Password@123
   ReleaseLabel:
     Type: String
-    Default: emr-5.33.1
+    Default: emr-5.34.0
     AllowedValues:
+      - emr-5.34.0
       - emr-5.33.1
       - emr-5.33.0
       - emr-5.32.0
@@ -336,8 +328,11 @@ Resources:
       - LakeFormationEMRInstanceProfileRole
     Properties:
       Instances:
-        AdditionalMasterSecurityGroups:
-          - !Ref MasterNodeAdditionalSG
+        EmrManagedMasterSecurityGroup: !Ref MasterNodeSG
+        EmrManagedSlaveSecurityGroup: !Ref TaskNodeSG
+        ServiceAccessSecurityGroup: !Ref ServiceAccessSG
+        #AdditionalMasterSecurityGroups:
+        #  - !Ref MasterNodeAdditionalSG
         MasterInstanceGroup:
           InstanceCount: 1
           InstanceType: !Ref InstanceType
@@ -349,10 +344,6 @@ Resources:
           Market: ON_DEMAND
           Name: cfnCore
         Ec2SubnetId: !Ref VpcSubnet
-        Ec2KeyName: !If 
-          - HasKeyName
-          - !Ref EC2KeyPair
-          - !Ref 'AWS::NoValue'
       Name: !Sub 'LF-EMRCluster-${AWS::StackName}'
       Applications:
         - Name: Hadoop
@@ -465,10 +456,203 @@ Resources:
       TargetType: ip
       VpcId: !Ref VpcId
 
+  TaskSGRule1:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref MasterNodeSG
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all TCP access from master node
+      GroupId: !Ref TaskNodeSG
+
+  TaskSGRule2:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref MasterNodeSG
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all UDP access from master node
+      GroupId: !Ref TaskNodeSG
+
+  TaskSGRule3:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref MasterNodeSG
+      IpProtocol: icmp
+      FromPort: 8
+      ToPort: -1
+      Description: Allow ICMP access from master node
+      GroupId: !Ref TaskNodeSG
+
+  TaskSGRule4:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all TCP access from task node
+      GroupId: !Ref TaskNodeSG
+
+  TaskSGRule5:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all UDP access from task node
+      GroupId: !Ref TaskNodeSG
+
+  TaskSGRule6:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: icmp
+      FromPort: 8
+      ToPort: -1
+      Description: Allow ICMP access from task node
+      GroupId: !Ref TaskNodeSG
+
+  MasterSGRule1:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all TCP access from task node
+      GroupId: !Ref MasterNodeSG
+
+  MasterSGRule2:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all UDP access from task node
+      GroupId: !Ref MasterNodeSG
+
+  MasterSGRule3:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: icmp
+      FromPort: 8
+      ToPort: -1
+      Description: Allow ICMP access from task node
+      GroupId: !Ref MasterNodeSG
+
+  MasterSGRule4:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref MasterNodeSG
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all TCP access from master node
+      GroupId: !Ref MasterNodeSG
+
+  MasterSGRule5:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref MasterNodeSG
+      IpProtocol: udp
+      FromPort: 0
+      ToPort: 65535
+      Description: Allow all UDP access from master node
+      GroupId: !Ref MasterNodeSG
+
+  MasterSGRule6:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref MasterNodeSG
+      IpProtocol: icmp
+      FromPort: 8
+      ToPort: -1
+      Description: Allow ICMP access from MASTER node
+      GroupId: !Ref MasterNodeSG
+
+  ServiceAccessSGRule1:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      SourceSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: tcp
+      FromPort: 9443
+      ToPort: 9443
+      Description: Allow TCP on port 9443 access from task node
+      GroupId: !Ref ServiceAccessSG
+
+  ServiceAccessSGEgressRule1:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      DestinationSecurityGroupId: !Ref TaskNodeSG
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Allow TCP on port 8443 access to task node
+      GroupId: !Ref ServiceAccessSG
+
+  ServiceAccessSGEgressRule2:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      DestinationSecurityGroupId: !Ref MasterNodeSG
+      IpProtocol: tcp
+      FromPort: 8443
+      ToPort: 8443
+      Description: Allow TCP on port 8443 access to master node
+      GroupId: !Ref ServiceAccessSG
+
+  MasterNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: 'Master node security group for EMR'
+      SecurityGroupIngress: 
+        - SourceSecurityGroupId: !Ref ALBSecurityGroup
+          IpProtocol: tcp
+          FromPort: 8442
+          ToPort: 8442
+          Description: Allow ALB to access Zeppelin
+        - SourceSecurityGroupId: !Ref ServiceAccessSG
+          IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          Description: Allow access from service SG
+      SecurityGroupEgress:
+        - Description: Allow all outbound traffic
+          IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+
+  TaskNodeSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: 'Task node security group for EMR'
+      SecurityGroupIngress: 
+        - SourceSecurityGroupId: !Ref ServiceAccessSG
+          IpProtocol: tcp
+          FromPort: 8443
+          ToPort: 8443
+          Description: Allow access from service SG
+      SecurityGroupEgress:
+        - Description: Allow all outbound traffic
+          IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VpcId
+
+  ServiceAccessSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties: 
+      GroupDescription: 'Service access security group for EMR'
+      VpcId: !Ref VpcId
+
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties: 
-      GroupDescription: 'Security group for ALB'
+      GroupDescription: 'Security group for Zeppelin ALB'
       SecurityGroupIngress: 
         - CidrIp: 0.0.0.0/0
           IpProtocol: tcp
@@ -486,21 +670,21 @@ Resources:
           CidrIp: 0.0.0.0/0
       VpcId: !Ref VpcId
 
-  MasterNodeAdditionalSG:
-    Type: AWS::EC2::SecurityGroup
-    Properties: 
-      GroupDescription: 'Security group for Master node to allow access to Zeppelin'
-      SecurityGroupIngress: 
-        - SourceSecurityGroupId: !Ref ALBSecurityGroup
-          IpProtocol: tcp
-          FromPort: 8442
-          ToPort: 8442
-          Description: Allow ALB to access Zeppelin
-      SecurityGroupEgress:
-        - Description: Allow all outbound traffic
-          IpProtocol: -1
-          CidrIp: 0.0.0.0/0
-      VpcId: !Ref VpcId
+  #MasterNodeAdditionalSG:
+  #  Type: AWS::EC2::SecurityGroup
+  #  Properties: 
+  #    GroupDescription: 'Security group for Master node to allow access to Zeppelin'
+  #    SecurityGroupIngress: 
+  #      - SourceSecurityGroupId: !Ref ALBSecurityGroup
+  #        IpProtocol: tcp
+  #        FromPort: 8442
+  #        ToPort: 8442
+  #        Description: Allow ALB to access Zeppelin
+  #    SecurityGroupEgress:
+  #      - Description: Allow all outbound traffic
+  #        IpProtocol: -1
+  #        CidrIp: 0.0.0.0/0
+  #    VpcId: !Ref VpcId
   
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
